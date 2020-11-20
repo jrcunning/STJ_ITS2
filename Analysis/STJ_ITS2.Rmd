@@ -1,0 +1,128 @@
+---
+title: "ITS2 analysis"
+author: "HM Putnam"
+date: "2/14/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+## install packages if you dont already have them
+if (!require("tidyverse")) install.packages("tidyverse")
+if (!require("lubridate")) install.packages("lubridate")
+if (!require("vegan")) install.packages("vegan")
+
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+# load packages
+library(tidyverse)
+library(lubridate)
+library(vegan)
+library(phyloseq)
+library(psych)
+library(ggfortify)
+
+
+```
+
+```{r}
+data <- read.csv("../Data/0_BL_data.csv", sep=",", header=TRUE)
+rownames(data) <-data$sample_name
+data.mat <- as.matrix(data[,-c(1)])
+
+taxmat <- read.csv("../Data/0_BL_taxa.csv", sep=",", header=TRUE)
+rownames(taxmat) <- taxmat$Type
+taxmat <- as.matrix(taxmat)
+
+meta <- read.csv("../Data/0_BL_ITS2_ids.csv", sep=",", header=TRUE)
+
+Rel.Sym.Data <- data.mat/rowSums(data.mat) #calculate the Relative Abundance
+N <- rowSums(Rel.Sym.Data) # calculate row sums of the relative abundnaces, should sum to 1
+N #Display Row Sums, should all be 1
+
+#Transform Relative Abundance Matrix using sqrt
+Trans.Rel.Sym.Data <- sqrt(Rel.Sym.Data) #sqrt transform the matrix
+Trans.Rel.Sym.Data #view data
+
+##### PCA plot and Biplot of Symbiodinium #####
+
+sym.pca.res <- prcomp(Trans.Rel.Sym.Data, retx=TRUE) #principal components analysis on sym data
+summary(sym.pca.res) #analysis summary
+plot(sym.pca.res)
+
+# extract all PCs
+sym.PC.scores <- as.data.frame(sym.pca.res$x)
+
+#use scree diagram to determine break in majority versus minority variation explaination components
+screeplot(sym.pca.res, type="lines")
+sym.PC.scores <- sym.PC.scores[,1:2] #select first two components
+#scree(Trans.Rel.Sym.Data) #plot scree plot with Cattell's scree test of eigenvalue >1
+
+autoplot(sym.pca.res)
+autoplot(sym.pca.res, data = meta, colour = 'Species', shape='Site.Name')
+
+
+
+```
+
+
+
+Overall PERMANOVA
+```{r}
+## PERMANOVA
+set.seed(123)
+perman.res <- adonis(Trans.Rel.Sym.Data ~ Species*Site.Name*TIME.POINT, data=meta, method = "bray", permutations=999)
+perman.res
+
+```
+
+Plot Barchart
+```{r}
+Rel.data <- data/rowSums(data[,2:46])
+Rel.data$sample_name <- rownames(Rel.data)
+all.data <- merge(Rel.data, meta, by="sample_name")
+all.data <- all.data[,-1]
+
+types <- colnames(all.data[,-c(46:50)])
+types 
+
+df <- all.data %>%
+  pivot_longer(cols = A4.A4ab.A4aa:D1.D4.D4c.D6.D2.D4f,
+               names_to = c("type"),
+               values_to="rel.abun")
+
+df$TIME.POINT <- as.numeric(df$TIME.POINT)
+#df$group <- paste0(df$SAMPLING.DATE,sep="_",df$Rep)
+str(df)
+
+ggplot(data = df, mapping = aes(x = TIME.POINT, y = rel.abun, fill = type)) +
+    geom_bar(position="fill", stat="identity") +
+    facet_wrap(facets =  vars(Species, Site.Name), ncol = 3)+ 
+    theme(axis.text.x = element_text(size=rel(0.9),angle = 0), legend.position = "bottom",
+          legend.key.size = unit(0.5, "cm"), legend.text=element_text(size=6))
+ggsave("../Output/0_BL_rel.abund.its2.pdf", width = 10, height = 16) 
+  
+```
+
+
+Single Species
+```{r}
+Cnat <- all.data %>%
+  filter(Species == "Siderastrea siderea")
+
+Cnat.mat <- as.matrix(Cnat[,-c(46:50)])
+Cnat.info <- Cnat[,-c(1:45)]
+
+Cnat.permanova <- adonis(Cnat.mat ~ Site.Name*TIME.POINT, data=Cnat.info, method = "bray", permutations=999)
+Cnat.permanova
+
+
+
+```
+
+
+
+
+
