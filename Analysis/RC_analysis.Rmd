@@ -12,10 +12,9 @@ library(phyloseq)  # BiocManager::install("phyloseq")
 
 # Read in SymPortal output to phyloseq
 ```{r}
-sam0 <- read_csv("Data/0_BL_ITS2_ids.csv") %>%
-  clean_names() %>%
-  separate(sample_name, into = c("site", "host", "colony", "year"), remove = FALSE)
-sam1 <- as.matrix(sam0[, -1])
+sam0 <- read_csv("Data/STJ_Metadata_2017_2019.csv") %>%
+  clean_names()
+sam1 <- as.matrix(sam0)
 rownames(sam1) <- sam0$sample_name
 sam <- sample_data(data.frame(sam1))
 
@@ -41,21 +40,12 @@ rownames(otu1) <- otu0$sample_name
 otu <- otu_table(otu1, taxa_are_rows = FALSE)
 
 profiles <- phyloseq(otu, tax, sam)
-#profiles <- transform_sample_counts(profiles, fun = function(x) x / sum(x))
 ```
 
 
 # Read in coral post-QC sequence variants
 ```{r}
-sam0 <- read_csv("Data/0_BL_ITS2_ids.csv") %>%
-  clean_names() %>%
-  separate(sample_name, into = c("site", "host", "colony", "year"), remove = FALSE)
-sam1 <- as.matrix(sam0[, -1])
-rownames(sam1) <- sam0$sample_name
-sam <- sample_data(data.frame(sam1))
-
 taxnames <- read_tsv(
-  #file  = "SymPortal_output/8_STJ_HH_analysis_2018-11-27_14-51-10.886312.DIVs.absolute.txt",
   file = "Data/20200623_lenz/post_med_seqs/111_20200624_2020-06-24_03-40-50.238182.seqs.absolute.abund_and_meta.txt",
   n_max = 0) %>%
   select(-(1:33)) %>%
@@ -99,19 +89,21 @@ profiles <- transform_sample_counts(profiles, fun = function(x) x / sum(x))
 ```{r}
 # Subset colonies sampled in all three years
 all3 <- sample_data(profiles) %>%
-  group_by(colony) %>%
+  group_by(host_id) %>%
   filter(n() == 3) %>%
-  distinct(colony) %>%
-  pull(colony)
+  distinct(host_id) %>%
+  pull(host_id)
 
 plot_both <- function(mycol) {
-  s <- subset(sample_data(variants), colony == mycol)
+  s <- subset(sample_data(variants), host_id == mycol)
   v <- merge_phyloseq(tax_table(variants), otu_table(variants), s)
   p <- merge_phyloseq(tax_table(profiles), otu_table(profiles), s)
   v <- prune_taxa(taxa_sums(v) != 0, v)
   p <- prune_taxa(taxa_sums(p) != 0, p)
-  v_plot <- plot_bar(v, fill = "DIV")
-  p_plot <- plot_bar(p, fill = "its2_type_profile")
+  v_plot <- plot_bar(v, fill = "DIV") + theme(legend.position = "none")
+  p_plot <- plot_bar(p, fill = "its2_type_profile") + 
+    theme(legend.position = c(0.5, 0.5), legend.text = element_text(size = 5),
+          legend.title = element_blank())
   cowplot::plot_grid(p_plot, v_plot)
 }
 
@@ -120,9 +112,31 @@ plot_both(mycol = all3[1])
 plot_both(mycol = all3[2])
 plot_both(mycol = all3[3])
 plot_both(mycol = all3[4])
-plot_both(mycol = all3[5])
+plot_both(mycol = all3[5])   #####
 plot_both(mycol = all3[6])
-
+plot_both(mycol = all3[7])
+plot_both(mycol = all3[8])
+plot_both(mycol = all3[9])
+plot_both(mycol = all3[10])
+plot_both(mycol = all3[11])
+plot_both(mycol = all3[12])
+plot_both(mycol = all3[13])
+plot_both(mycol = all3[14])
+plot_both(mycol = all3[15])
+plot_both(mycol = all3[16])
+plot_both(mycol = all3[17])
+plot_both(mycol = all3[18])
+plot_both(mycol = all3[19])
+plot_both(mycol = all3[20])
+plot_both(mycol = all3[21])
+plot_both(mycol = all3[22])
+plot_both(mycol = all3[23])
+plot_both(mycol = all3[24])
+plot_both(mycol = all3[25])
+plot_both(mycol = all3[26])
+plot_both(mycol = all3[27])
+plot_both(mycol = all3[28])
+plot_both(mycol = all3[29]) 
 ```
 
 # Save
