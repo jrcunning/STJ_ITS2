@@ -168,32 +168,32 @@ plot_both <- function(mycol) {
 }
 
 all2
-plot_both(mycol = all2[1])
-plot_both(mycol = all2[2])
-plot_both(mycol = all2[3])
-plot_both(mycol = all2[4])
-plot_both(mycol = all2[5])   #####
-plot_both(mycol = all2[6])
-plot_both(mycol = all2[7])
-plot_both(mycol = all2[8])
-plot_both(mycol = all2[9])
-plot_both(mycol = all2[10])
-plot_both(mycol = all2[11])
-plot_both(mycol = all2[12])
-plot_both(mycol = all2[13])
-plot_both(mycol = all2[14])
-plot_both(mycol = all2[15])
-plot_both(mycol = all2[16])
-plot_both(mycol = all2[17])
-plot_both(mycol = all2[18])
-plot_both(mycol = all2[19])
-plot_both(mycol = all2[20])
-plot_both(mycol = all2[21])
-plot_both(mycol = all2[22])
-plot_both(mycol = all2[23])
-plot_both(mycol = all2[24])
-plot_both(mycol = all2[25])
-plot_both(mycol = all2[26])
-plot_both(mycol = all2[27])
+plot_both(mycol = all2[1]) #WP Ssid 2017/2019
+plot_both(mycol = all2[2]) #WP Ssid 2017/2019
+plot_both(mycol = all2[3]) #WP Ssid 2017/2019
+plot_both(mycol = all2[4]) #WP Ssid 2017/2019
+plot_both(mycol = all2[5]) #WP Ofra 2017/2019
+plot_both(mycol = all2[6]) #WP Oann 2017/2019
+plot_both(mycol = all2[7]) #WP Ofra 2017/2019
+plot_both(mycol = all2[8]) #WP Oann 2017/2019
+plot_both(mycol = all2[9]) #ET Ofra shift 2017/2019
+plot_both(mycol = all2[10]) #WP Ofra 2017/2019
+plot_both(mycol = all2[11]) #CH Ofav 2017/2018
+plot_both(mycol = all2[12]) #WP Ofav 2017/2019
+plot_both(mycol = all2[13]) #WP Mcav 2017/2019
+plot_both(mycol = all2[14]) #CH Ssid 2017/2019
+plot_both(mycol = all2[15]) #WP Pstr
+plot_both(mycol = all2[16]) #CH Pstr
+plot_both(mycol = all2[17]) #ET Pstr 2017/2018
+plot_both(mycol = all2[18]) #WP Pstr 2017/2019
+plot_both(mycol = all2[19]) #WP Dlab 2017/2019
+plot_both(mycol = all2[20]) #WP Pstr 2017/2019
+plot_both(mycol = all2[21]) #WP Pstr 2017/2019
+plot_both(mycol = all2[22]) #WP Ssid 2017/2019
+plot_both(mycol = all2[23]) #ET Pfur 2017/2019
+plot_both(mycol = all2[24]) #WP Mcav 2017/2019
+plot_both(mycol = all2[25]) #WP Mcav 2017/2019
+plot_both(mycol = all2[26]) #WP Cnat 2017/2019
+plot_both(mycol = all2[27]) #ET Dlab 2017/2019
 
 ```
