@@ -108,35 +108,35 @@ plot_both <- function(mycol) {
 }
 
 all3
-plot_both(mycol = all3[1])
-plot_both(mycol = all3[2])
-plot_both(mycol = all3[3])
-plot_both(mycol = all3[4])
-plot_both(mycol = all3[5])   #####
-plot_both(mycol = all3[6])
-plot_both(mycol = all3[7])
-plot_both(mycol = all3[8])
-plot_both(mycol = all3[9])
-plot_both(mycol = all3[10])
-plot_both(mycol = all3[11])
-plot_both(mycol = all3[12])
-plot_both(mycol = all3[13])
-plot_both(mycol = all3[14])
-plot_both(mycol = all3[15])
-plot_both(mycol = all3[16])
-plot_both(mycol = all3[17])
-plot_both(mycol = all3[18])
-plot_both(mycol = all3[19])
-plot_both(mycol = all3[20])
-plot_both(mycol = all3[21])
-plot_both(mycol = all3[22])
-plot_both(mycol = all3[23])
-plot_both(mycol = all3[24])
-plot_both(mycol = all3[25])
-plot_both(mycol = all3[26])
-plot_both(mycol = all3[27])
-plot_both(mycol = all3[28])
-plot_both(mycol = all3[29]) 
+plot_both(mycol = all3[1]) #ET Ssid, fidelity
+plot_both(mycol = all3[2]) #ET Ssid, fidelity
+plot_both(mycol = all3[3]) #ET Ofra, fidelity
+plot_both(mycol = all3[4]) #CH Ofra, fidelity
+plot_both(mycol = all3[5]) #CH Ofra 2019 shift in profile but not much in variants
+plot_both(mycol = all3[6]) #Error in validObject
+plot_both(mycol = all3[7]) #CH Mcav, fidelity with some background switching
+plot_both(mycol = all3[8]) #ET Mcav 
+plot_both(mycol = all3[9]) #CH Mcav 2018 more variants
+plot_both(mycol = all3[10]) #Error in validObject
+plot_both(mycol = all3[11]) #ET Mcav
+plot_both(mycol = all3[12]) #CH Pstr
+plot_both(mycol = all3[13]) #CH Cnat
+plot_both(mycol = all3[14]) #ET Cnat
+plot_both(mycol = all3[15]) #ET Cnat
+plot_both(mycol = all3[16]) #ET Cnat
+plot_both(mycol = all3[17]) #ET Pstr
+plot_both(mycol = all3[18]) #Error in validObject
+plot_both(mycol = all3[19]) #CH Dlab
+plot_both(mycol = all3[20]) #ET Dlab
+plot_both(mycol = all3[21]) #ET Dlab
+plot_both(mycol = all3[22]) #CH Cnat
+plot_both(mycol = all3[23]) #Error in validObject
+plot_both(mycol = all3[24]) #ET Pstr
+plot_both(mycol = all3[25]) #ET Dlab
+plot_both(mycol = all3[26]) #CH Dlab
+plot_both(mycol = all3[27]) #CH Ssid
+plot_both(mycol = all3[28]) #CH Oann
+plot_both(mycol = all3[29]) #CH Oann
 ```
 
 # Save
@@ -146,4 +146,54 @@ save(profiles, variants, file = "data/Symb_phyloseq.RData")
 ```
 
 
+```{r}
+# Subset colonies sampled in 2 years
+all2 <- sample_data(profiles) %>%
+  group_by(host_id) %>%
+  filter(n() == 2) %>%
+  distinct(host_id) %>%
+  pull(host_id)
 
+plot_both <- function(mycol) {
+  s <- subset(sample_data(variants), host_id == mycol)
+  v <- merge_phyloseq(tax_table(variants), otu_table(variants), s)
+  p <- merge_phyloseq(tax_table(profiles), otu_table(profiles), s)
+  v <- prune_taxa(taxa_sums(v) != 0, v)
+  p <- prune_taxa(taxa_sums(p) != 0, p)
+  v_plot <- plot_bar(v, fill = "DIV") + theme(legend.position = "none")
+  p_plot <- plot_bar(p, fill = "its2_type_profile") + 
+    theme(legend.position = c(0.5, 0.5), legend.text = element_text(size = 5),
+          legend.title = element_blank())
+  cowplot::plot_grid(p_plot, v_plot)
+}
+
+all2
+plot_both(mycol = all2[1])
+plot_both(mycol = all2[2])
+plot_both(mycol = all2[3])
+plot_both(mycol = all2[4])
+plot_both(mycol = all2[5])   #####
+plot_both(mycol = all2[6])
+plot_both(mycol = all2[7])
+plot_both(mycol = all2[8])
+plot_both(mycol = all2[9])
+plot_both(mycol = all2[10])
+plot_both(mycol = all2[11])
+plot_both(mycol = all2[12])
+plot_both(mycol = all2[13])
+plot_both(mycol = all2[14])
+plot_both(mycol = all2[15])
+plot_both(mycol = all2[16])
+plot_both(mycol = all2[17])
+plot_both(mycol = all2[18])
+plot_both(mycol = all2[19])
+plot_both(mycol = all2[20])
+plot_both(mycol = all2[21])
+plot_both(mycol = all2[22])
+plot_both(mycol = all2[23])
+plot_both(mycol = all2[24])
+plot_both(mycol = all2[25])
+plot_both(mycol = all2[26])
+plot_both(mycol = all2[27])
+
+```
