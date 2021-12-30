@@ -8,6 +8,9 @@ output: html_document
 library(tidyverse)
 library(janitor)
 library(phyloseq)  # BiocManager::install("phyloseq")
+library(cowplot)
+library(ggrepel)
+library(scales)
 ```
 
 # Read in SymPortal output to phyloseq
@@ -79,9 +82,21 @@ hist(log10(sample_sums(variants)))
 mean(sample_sums(variants))
 sd(sample_sums(variants))/sqrt(nsamples(variants))
 
+# Filter out samples with low read counts
+low <- sample_sums(variants) < 1000
+variants <- subset_samples(variants, !low)
+variants <- prune_taxa(taxa_sums(variants) != 0, variants)
+profiles <- subset_samples(profiles, !low)
+profiles <- prune_taxa(taxa_sums(profiles) != 0, profiles)
+
+ntaxa(variants)
+ntaxa(profiles)
+
+
+
 # Transform to relative abundance
-variants <- transform_sample_counts(variants, fun = function(x) x / sum(x))
-profiles <- transform_sample_counts(profiles, fun = function(x) x / sum(x))
+#variants <- transform_sample_counts(variants, fun = function(x) x / sum(x))
+#profiles <- transform_sample_counts(profiles, fun = function(x) x / sum(x))
 ```
 
 
@@ -94,49 +109,103 @@ all3 <- sample_data(profiles) %>%
   distinct(host_id) %>%
   pull(host_id)
 
+# Create standardized color pallettes for plotting profiles and variants
+ppal <- hue_pal(l = 65)(ntaxa(profiles))
+ppal <- setNames(ppal, data.frame(tax_table(profiles))$its2_type_profile)
+vpal <- hue_pal(l = 65)(ntaxa(variants))
+vpal <- setNames(vpal, taxa_names(variants))
+
 plot_both <- function(mycol) {
   s <- subset(sample_data(variants), host_id == mycol)
   v <- merge_phyloseq(tax_table(variants), otu_table(variants), s)
   p <- merge_phyloseq(tax_table(profiles), otu_table(profiles), s)
   v <- prune_taxa(taxa_sums(v) != 0, v)
   p <- prune_taxa(taxa_sums(p) != 0, p)
-  v_plot <- plot_bar(v, fill = "DIV") + theme(legend.position = "none")
-  p_plot <- plot_bar(p, fill = "its2_type_profile") + 
-    theme(legend.position = c(0.5, 0.5), legend.text = element_text(size = 5),
-          legend.title = element_blank())
-  cowplot::plot_grid(p_plot, v_plot)
+  vmdf <- psmelt(v)
+  seqdepth <- vmdf %>%
+    group_by(year) %>%
+    summarize(sum = paste0("n=", sum(Abundance)))
+  ti <- paste0(vmdf[1, c("host_genus", "host_species", "host_id", "host_site")], collapse = " ")
+  v_plot <- ggplot(vmdf, aes(x = year, y = Abundance, fill = DIV, label = DIV)) + 
+    geom_bar(stat = "identity", position = "fill", color = "black", lwd = 0.1) + 
+    scale_x_discrete(expand = c(0, 0)) +
+    scale_y_continuous(expand = expansion(mult = c(0, .1)), labels = scales::percent) +
+    scale_fill_manual(values = vpal[vmdf$OTU]) +
+    geom_text(aes(size = Abundance), position = position_fill(vjust = 0.5)) +
+    geom_text(data = seqdepth, aes(x = year, y = 1.01, label = sum), vjust = 0, size = 3, inherit.aes = FALSE) +
+    theme(legend.position = "none", panel.background = element_blank(), 
+          axis.title.x = element_blank(), axis.title.y = element_blank()) +
+    coord_cartesian(ylim = c(0, 1))
+  pmdf <- psmelt(p)
+  p_plot <- ggplot(pmdf, aes(x = year, y = Abundance, fill = its2_type_profile, label = its2_type_profile)) +
+    geom_bar(stat = "identity", position = "fill", color = "black", lwd = 0.1) +
+    scale_x_discrete(expand = c(0, 0)) +
+    scale_y_continuous(expand = expansion(mult = c(0, .1)), labels = scales::percent) +
+    scale_fill_manual(values = ppal[pmdf$its2_type_profile]) +
+    geom_label_repel(position = position_fill(vjust = 0.5), force = 2,
+                     point.size = NA, xlim = c(-0.1, 3.6), ylim = c(0.1,0.9), size = 2) +
+    theme(legend.position = "none", panel.background = element_blank(), 
+          axis.title.x = element_blank(), axis.title.y = element_blank()) +
+    coord_cartesian(clip = "off")
+  plot_row <- plot_grid(p_plot, v_plot, labels = c("ITS2 Profiles", "ITS2 Variants"), label_fontface = "plain")
+  title <- ggdraw() + 
+    draw_label(ti, fontface = 'bold', x = 0, hjust = 0) +
+    theme(plot.margin = margin(0, 0, 0, 7))
+  plot_grid(title, plot_row, ncol = 1, rel_heights = c(0.1, 1))
 }
 
-all3
 plot_both(mycol = all3[1])
-plot_both(mycol = all3[2])
-plot_both(mycol = all3[3])
-plot_both(mycol = all3[4])
-plot_both(mycol = all3[5])   #####
-plot_both(mycol = all3[6])
-plot_both(mycol = all3[7])
-plot_both(mycol = all3[8])
-plot_both(mycol = all3[9])
-plot_both(mycol = all3[10])
-plot_both(mycol = all3[11])
-plot_both(mycol = all3[12])
-plot_both(mycol = all3[13])
-plot_both(mycol = all3[14])
-plot_both(mycol = all3[15])
-plot_both(mycol = all3[16])
-plot_both(mycol = all3[17])
-plot_both(mycol = all3[18])
-plot_both(mycol = all3[19])
-plot_both(mycol = all3[20])
-plot_both(mycol = all3[21])
-plot_both(mycol = all3[22])
-plot_both(mycol = all3[23])
-plot_both(mycol = all3[24])
-plot_both(mycol = all3[25])
-plot_both(mycol = all3[26])
-plot_both(mycol = all3[27])
-plot_both(mycol = all3[28])
-plot_both(mycol = all3[29]) 
+
+# Plot by species and site
+ordf <- data.frame(sam) %>%
+  distinct(host_id, host_genus, host_species, host_site) %>%
+  filter(host_id != "RANDOM") %>%
+  filter(host_id %in% all3) %>%
+  arrange(host_genus, host_species, host_site)
+```
+
+# Colpophyllia natans
+```{r}
+cnat <- ordf %>%
+  filter(host_species == "natans")
+
+for (i in 1:nrow(cnat)) {
+  p <- plot_both(mycol = cnat[i, "host_id"])
+  print(p)
+}
+```
+
+# Diploria labyrinthiformis
+```{r}
+dlab <- ordf %>%
+  filter(host_species == "labrynthiformis")
+
+for (i in 1:nrow(dlab)) {
+  p <- plot_both(mycol = dlab[i, "host_id"])
+  print(p)
+}
+```
+
+# Montastraea cavernosa
+```{r}
+mcav <- ordf %>%
+  filter(host_species == "cavernosa")
+
+for (i in 1:nrow(mcav)) {
+  p <- plot_both(mycol = mcav[i, "host_id"])
+  print(p)
+}
+```
+
+# Orbicella spp.
+```{r}
+orb <- ordf %>%
+  filter(host_genus == "orbicella")
+
+for (i in 1:nrow(mcav)) {
+  p <- plot_both(mycol = mcav[i, "host_id"])
+  print(p)
+}
 ```
 
 # Save
