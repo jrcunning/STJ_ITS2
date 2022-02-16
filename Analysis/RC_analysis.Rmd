@@ -1,20 +1,26 @@
 ---
-title: "STJ_timeseries"
+title: "St. John symbiont time series"
+author: "R. Cunning"
+date: "2/16/2022"
 output: html_document
 ---
 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+```
 
-```{r}
+```{r libraries}
 library(tidyverse)
 library(janitor)
 library(phyloseq)  # BiocManager::install("phyloseq")
 library(cowplot)
 library(ggrepel)
 library(scales)
+library(RColorBrewer)
 ```
 
-# Read in SymPortal output to phyloseq
-```{r}
+
+```{r profiles, include = FALSE}
 sam0 <- read_csv("Data/STJ_Metadata_2017_2019.csv") %>%
   clean_names()
 sam1 <- as.matrix(sam0)
@@ -45,9 +51,7 @@ otu <- otu_table(otu1, taxa_are_rows = FALSE)
 profiles <- phyloseq(otu, tax, sam)
 ```
 
-
-# Read in coral post-QC sequence variants
-```{r}
+```{r variants, include = FALSE}
 taxnames <- read_tsv(
   file = "Data/20200623_lenz/post_med_seqs/111_20200624_2020-06-24_03-40-50.238182.seqs.absolute.abund_and_meta.txt",
   n_max = 0) %>%
@@ -71,8 +75,11 @@ otu <- otu_table(otu1, taxa_are_rows = FALSE)
 variants <- phyloseq(otu, tax, sam)
 ```
 
+```{r save, include = FALSE}
+save(profiles, variants, file = "data/Symb_phyloseq.RData")
+```
 
-```{r}
+```{r QC, include = FALSE}
 ntaxa(variants)
 ntaxa(profiles)
 
@@ -99,22 +106,33 @@ ntaxa(profiles)
 #profiles <- transform_sample_counts(profiles, fun = function(x) x / sum(x))
 ```
 
-
-# Plot
-```{r}
-# Subset colonies sampled in all three years
-all3 <- sample_data(profiles) %>%
-  group_by(host_id) %>%
-  filter(n() == 3) %>%
-  distinct(host_id) %>%
-  pull(host_id)
+```{r color_palettes, include = FALSE}
+# # Subset colonies sampled in all three years
+# all3 <- sample_data(profiles) %>%
+#   group_by(host_id) %>%
+#   filter(n() == 3) %>%
+#   distinct(host_id) %>%
+#   pull(host_id)
 
 # Create standardized color pallettes for plotting profiles and variants
-ppal <- hue_pal(l = 65)(ntaxa(profiles))
-ppal <- setNames(ppal, data.frame(tax_table(profiles))$its2_type_profile)
-vpal <- hue_pal(l = 65)(ntaxa(variants))
-vpal <- setNames(vpal, taxa_names(variants))
 
+#ppal <- sample(allcolors, ntaxa(profiles))
+#ppal <- hue_pal(l = 65)(ntaxa(profiles))
+qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',]
+col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
+set.seed(555)
+ppal <- sample(col_vector, ntaxa(profiles))
+ppal <- setNames(ppal, data.frame(tax_table(profiles))$its2_type_profile)
+
+allcolors <- grDevices::colors()
+set.seed(888)
+vpal <- sample(allcolors, ntaxa(variants))
+#vpal <- hue_pal(l = 65)(ntaxa(variants))
+vpal <- setNames(vpal, taxa_names(variants))
+```
+
+```{r plotting_functions, include = FALSE}
+# Plotting functions
 plot_both <- function(mycol) {
   s <- subset(sample_data(variants), host_id == mycol)
   v <- merge_phyloseq(tax_table(variants), otu_table(variants), s)
@@ -154,19 +172,114 @@ plot_both <- function(mycol) {
   plot_grid(title, plot_row, ncol = 1, rel_heights = c(0.1, 1))
 }
 
-plot_both(mycol = all3[1])
+#plot_both(mycol = all3[1])
 
 # Plot by species and site
-ordf <- data.frame(sam) %>%
-  distinct(host_id, host_genus, host_species, host_site) %>%
-  filter(host_id != "RANDOM") %>%
-  filter(host_id %in% all3) %>%
-  arrange(host_genus, host_species, host_site)
+# ordf <- data.frame(sam) %>%
+#   distinct(host_id, host_genus, host_species, host_site) %>%
+#   filter(host_id != "RANDOM") %>%
+#   filter(host_id %in% all3) %>%
+#   arrange(host_genus, host_species, host_site)
+
+
+
+# new plotting function to condense by species rather than by individual
+plot_both2 <- function(...) {
+  s <- subset(sample_data(variants), ...)
+  v <- merge_phyloseq(tax_table(variants), otu_table(variants), s)
+  p <- merge_phyloseq(tax_table(profiles), otu_table(profiles), s)
+  v <- prune_taxa(taxa_sums(v) != 0, v)
+  p <- prune_taxa(taxa_sums(p) != 0, p)
+  vmdf <- psmelt(v)
+  seqdepth <- vmdf %>%
+    group_by(year) %>%
+    summarize(sum = paste0("n=", sum(Abundance)))
+  ti <- paste0(vmdf[1, c("host_genus", "host_species")], collapse = " ")
+  v_plot <- ggplot(vmdf, aes(x = year, y = Abundance, fill = DIV, label = DIV)) + 
+    geom_bar(stat = "identity", position = "fill") + 
+    facet_wrap(~ host_site + host_id, nrow = 1) +
+    scale_x_discrete(expand = c(0, 0)) +
+    scale_y_continuous(expand = expansion(mult = c(0, .1)), labels = scales::percent) +
+    ylab("ITS2 sequences") +
+    scale_fill_manual(values = vpal[vmdf$OTU]) +
+    # geom_text(aes(size = Abundance), position = position_fill(vjust = 0.5)) +
+    # geom_text(data = seqdepth, aes(x = year, y = 1.01, label = sum), vjust = 0, size = 3, inherit.aes = FALSE) +
+    theme(legend.position = "none", panel.background = element_blank(), 
+          axis.title.x = element_blank(), axis.text.x = element_blank(),
+          axis.text.y = element_blank(), axis.ticks.y = element_blank()) +
+    coord_cartesian(ylim = c(0, 1))
+  pmdf <- psmelt(p)
+  p_plot <- ggplot(pmdf, aes(x = year, y = Abundance, fill = its2_type_profile, label = its2_type_profile)) +
+    geom_bar(stat = "identity", position = "fill") +
+    facet_wrap(~ host_site + host_id, nrow = 1) +
+    scale_x_discrete(expand = c(0, 0)) +
+    scale_y_continuous(expand = expansion(mult = c(0, .1)), labels = scales::percent) +
+    ylab("Profiles") +
+    scale_fill_manual(values = ppal[pmdf$its2_type_profile]) +
+    # geom_label_repel(position = position_fill(vjust = 0.5), force = 2,
+    #                  point.size = NA, xlim = c(-0.1, 3.6), ylim = c(0.1,0.9), size = 2) +
+    theme(legend.position = "bottom", panel.background = element_blank(), 
+          axis.title.x = element_blank(), axis.text.x = element_text(angle = 90),
+          axis.text.y = element_blank(), axis.ticks.y = element_blank(),
+          strip.background = element_blank(), strip.text.x = element_blank())# +
+    #guides(fill = guide_legend(nrow = 4)) # +
+    #coord_cartesian(clip = "off")
+  plot_grid(v_plot, p_plot, nrow = 2, label_fontface = "plain")
+}
 ```
 
-# Colpophyllia natans
+# Summary figures for each species
+
+The top row of bars shows all ITS2 sequence variants, while the bottom row of bars shows the associated ITS2 profiles. Legend refers to profiles only, not variants.
+
+### *Colpophyllia natans*
+```{r natans_summary, fig.width = 11}
+plot_both2(host_species == "natans")
+```
+
+*C. natans* colonies at Cabritte Horn and East Tektite were dominated by a few different *Breviolum* profiles, with low levels of *Cladocopium* and *Durusdinium* that fluctuated randomly over time. At White Point, one colony was dominated by *Cladocopium* and one by *Durusdinium*.
+
+### *Diploria labyrinithiformis*
+```{r labrynthiformis_summary, fig.width = 11}
+plot_both2(host_species == "labrynthiformis")
+```
+
+One colony at East Tektite (57) was dominated by *Cladocopium*, but otherwise *D. labyrinthiformis* was dominated by several distinct *Breviolum* profiles. These mostly remained the same over time within colonies, but changed for a few (colony 36, 37, 62). Will have to dig into these to see if these may be real changes or analytical artifacts. 
+
+### *Montastraea cavernosa*
+```{r cavernosa_summary, fig.width = 11}
+plot_both2(host_species == "cavernosa")
+```
+
+*M. cavernosa* is dominated by a couple of different *Cladocopium* profiles with some background *Breviolum*. Two colonies at White Point have a distinct *Cladocopium* profile, but there doesn't appear to be any particular change over time.
+
+### *Orbicella spp.*
+```{r orbicella_summary, fig.width = 11}
+plot_both2(host_genus == "Orbicella")
+```
+
+*Orbicella* colonies are sometimes dominated by *Symbiodinium*, *Breviolum*, and *Cladocopium*. Most stay the same over time, but some colonies (24 and 64, both at White Point), have mixtures of *Symbiodinium* and  *Cladocopium* in 2017, and then only *Cladocopium* in 2019. Another colony at White Point (17) appears to change between two *Cladocopium* profiles. At other sites, little evidence of change over time.
+
+### *Pseudodiploria strigosa*
+```{r strigosa_summary, fig.width = 11}
+plot_both2(host_species == "strigosa")
+```
+
+*P. strigosa* colonies contain mostly *Breviolum* profiles, with some evidences for changes among *Breviolum* types over time. Two colonies at East Tektite (45 and 54) are dominated by *Cladocopium*.
+
+### *Siderastrea siderea*
+```{r siderea_summary, fig.width = 11}
+plot_both2(host_species == "siderea")
+```
+
+*S. siderea* hosts mainly *Cladocopium* profiles that do not change over time. A couple of colonies (7 and 73) may have fluctuating levels of multiple *Cladocopium* types. One colony at Cabritte Horn (51) is dominated by *Breviolum*.
+
+# Detailed figures for each coral colony
+
+### Colpophyllia natans
 ```{r}
-cnat <- ordf %>%
+cnat <- data.frame(sam) %>%
+  distinct(host_id, host_genus, host_species, host_site) %>%
   filter(host_species == "natans")
 
 for (i in 1:nrow(cnat)) {
@@ -175,9 +288,10 @@ for (i in 1:nrow(cnat)) {
 }
 ```
 
-# Diploria labyrinthiformis
+### Diploria labyrinthiformis
 ```{r}
-dlab <- ordf %>%
+dlab <- data.frame(sam) %>%
+  distinct(host_id, host_genus, host_species, host_site) %>%
   filter(host_species == "labrynthiformis")
 
 for (i in 1:nrow(dlab)) {
@@ -186,9 +300,10 @@ for (i in 1:nrow(dlab)) {
 }
 ```
 
-# Montastraea cavernosa
+### Montastraea cavernosa
 ```{r}
-mcav <- ordf %>%
+mcav <- data.frame(sam) %>%
+  distinct(host_id, host_genus, host_species, host_site) %>%
   filter(host_species == "cavernosa")
 
 for (i in 1:nrow(mcav)) {
@@ -197,22 +312,43 @@ for (i in 1:nrow(mcav)) {
 }
 ```
 
-# Orbicella spp.
+### Orbicella spp.
 ```{r}
-orb <- ordf %>%
-  filter(host_genus == "orbicella")
+orb <- data.frame(sam) %>%
+  distinct(host_id, host_genus, host_species, host_site) %>%
+  filter(host_genus == "Orbicella")
 
-for (i in 1:nrow(mcav)) {
-  p <- plot_both(mycol = mcav[i, "host_id"])
+for (i in 1:nrow(orb)) {
+  p <- plot_both(mycol = orb[i, "host_id"])
   print(p)
 }
 ```
 
-# Save
-
+### Pseudodiploria strigosa
 ```{r}
-save(profiles, variants, file = "data/Symb_phyloseq.RData")
+pstr <- data.frame(sam) %>%
+  distinct(host_id, host_genus, host_species, host_site) %>%
+  filter(host_species == "strigosa")
+
+for (i in 1:nrow(pstr)) {
+  p <- plot_both(mycol = pstr[i, "host_id"])
+  print(p)
+}
 ```
+
+### Siderastrea siderea
+```{r}
+ssid <- data.frame(sam) %>%
+  distinct(host_id, host_genus, host_species, host_site) %>%
+  filter(host_species == "siderea")
+
+for (i in 1:nrow(ssid)) {
+  p <- plot_both(mycol = ssid[i, "host_id"])
+  print(p)
+}
+```
+
+
 
 
 
