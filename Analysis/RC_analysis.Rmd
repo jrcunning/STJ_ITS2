@@ -312,6 +312,7 @@ for (i in 1:nrow(mcav)) {
 }
 ```
 
+
 ### Orbicella spp.
 ```{r}
 orb <- data.frame(sam) %>%
@@ -347,8 +348,3 @@ for (i in 1:nrow(ssid)) {
   print(p)
 }
 ```
-
-
-
-
-
