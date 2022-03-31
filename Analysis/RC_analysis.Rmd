@@ -239,12 +239,96 @@ plot_both2(host_species == "natans")
 
 *C. natans* colonies at Cabritte Horn and East Tektite were dominated by a few different *Breviolum* profiles, with low levels of *Cladocopium* and *Durusdinium* that fluctuated randomly over time. At White Point, one colony was dominated by *Cladocopium* and one by *Durusdinium*.
 
+```{r}
+# NMDS for C. natans
+cnat <- merge_phyloseq(tax_table(variants), otu_table(variants), 
+                       subset(sample_data(variants), host_species == "natans"))
+cnat <- prune_taxa(taxa_sums(cnat) != 0, cnat)
+cnatr = transform_sample_counts(cnat, function(x) x/sum(x))
+
+cnatdistmat <- vegan::vegdist(sqrt(otu_table(cnatr)), method = "bray")
+
+cnatdf <- as.data.frame(cmdscale(cnatdistmat, k = 2)) %>%
+  mutate(sample_name = rownames(.)) %>%
+  left_join(sample_data(cnat)) %>%
+  as_tibble() %>%
+  select(V1, V2, sample_name, host_id, year, host_site, collection_depth) %>%
+  arrange(host_id, year)
+
+ggplot(cnatdf, aes(x = V1, y = V2, color = host_id)) +
+  geom_point(aes(shape = year)) +
+  geom_path(aes(group = host_id), arrow = arrow(length = unit(0.1, "inches"), type = "open"))
+
+# Subset just the B-dom corals
+cnat <- merge_phyloseq(tax_table(variants), otu_table(variants), 
+                       subset(sample_data(variants), host_species == "natans" & 
+                                                     host_id %in% c("12", "5", "33", "35", "60", "61")))
+cnat <- prune_taxa(taxa_sums(cnat) != 0, cnat)
+cnatr = transform_sample_counts(cnat, function(x) x/sum(x))
+
+cnatdistmat <- vegan::vegdist(sqrt(otu_table(cnatr)), method = "bray")
+
+cnatdf <- as.data.frame(cmdscale(cnatdistmat, k = 2)) %>%
+  mutate(sample_name = rownames(.)) %>%
+  left_join(sample_data(cnat)) %>%
+  as_tibble() %>%
+  select(V1, V2, sample_name, host_id, year, host_site, collection_depth) %>%
+  arrange(host_id, year)
+
+ggplot(cnatdf, aes(x = V1, y = V2, color = host_id)) +
+  geom_point(aes(shape = year)) +
+  geom_path(aes(group = host_id), arrow = arrow(length = unit(0.1, "inches"), type = "open")) +
+  labs(title = "Just Breviolum-dominated C. natans")
+```
+
 ### *Diploria labyrinithiformis*
 ```{r labrynthiformis_summary, fig.width = 11}
 plot_both2(host_species == "labrynthiformis")
 ```
 
 One colony at East Tektite (57) was dominated by *Cladocopium*, but otherwise *D. labyrinthiformis* was dominated by several distinct *Breviolum* profiles. These mostly remained the same over time within colonies, but changed for a few (colony 36, 37, 62). Will have to dig into these to see if these may be real changes or analytical artifacts. 
+
+```{r}
+# NMDS for D. lab
+dlab <- merge_phyloseq(tax_table(variants), otu_table(variants), 
+                       subset(sample_data(variants), host_species == "labrynthiformis"))
+dlab <- prune_taxa(taxa_sums(dlab) != 0, dlab)
+dlabr = transform_sample_counts(dlab, function(x) x/sum(x))
+
+dlabdistmat <- vegan::vegdist(sqrt(otu_table(dlabr)), method = "bray")
+
+dlabdf <- as.data.frame(cmdscale(dlabdistmat, k = 2)) %>%
+  mutate(sample_name = rownames(.)) %>%
+  left_join(sample_data(dlab)) %>%
+  as_tibble() %>%
+  select(V1, V2, sample_name, host_id, year, host_site, collection_depth) %>%
+  arrange(host_id, year)
+
+ggplot(dlabdf, aes(x = V1, y = V2, color = host_id)) +
+  geom_point(aes(shape = year)) +
+  geom_path(aes(group = host_id), arrow = arrow(length = unit(0.1, "inches"), type = "open"))
+
+# Just B-dom Dlab
+dlab <- merge_phyloseq(tax_table(variants), otu_table(variants), 
+                       subset(sample_data(variants), host_species == "labrynthiformis" &
+                                                     host_id %in% c("13", "50", "36", "37", "62", "20", "23")))
+dlab <- prune_taxa(taxa_sums(dlab) != 0, dlab)
+dlabr = transform_sample_counts(dlab, function(x) x/sum(x))
+
+dlabdistmat <- vegan::vegdist(sqrt(otu_table(dlabr)), method = "bray")
+
+dlabdf <- as.data.frame(cmdscale(dlabdistmat, k = 2)) %>%
+  mutate(sample_name = rownames(.)) %>%
+  left_join(sample_data(dlab)) %>%
+  as_tibble() %>%
+  select(V1, V2, sample_name, host_id, year, host_site, collection_depth) %>%
+  arrange(host_id, year)
+
+ggplot(dlabdf, aes(x = V1, y = V2, color = host_id)) +
+  geom_point(aes(shape = year)) +
+  geom_path(aes(group = host_id), arrow = arrow(length = unit(0.1, "inches"), type = "open")) +
+  labs(title = "Just Breviolum-dominated D.lab.")
+```
 
 ### *Montastraea cavernosa*
 ```{r cavernosa_summary, fig.width = 11}
@@ -253,12 +337,97 @@ plot_both2(host_species == "cavernosa")
 
 *M. cavernosa* is dominated by a couple of different *Cladocopium* profiles with some background *Breviolum*. Two colonies at White Point have a distinct *Cladocopium* profile, but there doesn't appear to be any particular change over time.
 
+```{r}
+# NMDS for Mcav
+mcav <- merge_phyloseq(tax_table(variants), otu_table(variants), 
+                       subset(sample_data(variants), host_species == "cavernosa"))
+mcav <- prune_taxa(taxa_sums(mcav) != 0, mcav)
+mcavr = transform_sample_counts(mcav, function(x) x/sum(x))
+
+mcavdistmat <- vegan::vegdist(sqrt(otu_table(mcavr)), method = "bray")
+
+mcavdf <- as.data.frame(cmdscale(mcavdistmat, k = 2)) %>%
+  mutate(sample_name = rownames(.)) %>%
+  left_join(sample_data(mcav)) %>%
+  as_tibble() %>%
+  select(V1, V2, sample_name, host_id, year, host_site, collection_depth) %>%
+  arrange(host_id, year)
+
+ggplot(mcavdf, aes(x = V1, y = V2, color = host_id)) +
+  geom_point(aes(shape = year)) +
+  geom_path(aes(group = host_id), arrow = arrow(length = unit(0.1, "inches"), type = "open"))
+```
+
 ### *Orbicella spp.*
 ```{r orbicella_summary, fig.width = 11}
 plot_both2(host_genus == "Orbicella")
 ```
 
 *Orbicella* colonies are sometimes dominated by *Symbiodinium*, *Breviolum*, and *Cladocopium*. Most stay the same over time, but some colonies (24 and 64, both at White Point), have mixtures of *Symbiodinium* and  *Cladocopium* in 2017, and then only *Cladocopium* in 2019. Another colony at White Point (17) appears to change between two *Cladocopium* profiles. At other sites, little evidence of change over time.
+
+```{r}
+# NMDS for Orbicella
+orb <- merge_phyloseq(tax_table(variants), otu_table(variants), 
+                       subset(sample_data(variants), host_genus == "Orbicella"))
+orb <- prune_taxa(taxa_sums(orb) != 0, orb)
+orbr = transform_sample_counts(orb, function(x) x/sum(x))
+
+orbdistmat <- vegan::vegdist(sqrt(otu_table(orbr)), method = "bray")
+
+orbdf <- as.data.frame(cmdscale(orbdistmat, k = 2)) %>%
+  mutate(sample_name = rownames(.)) %>%
+  left_join(sample_data(orb)) %>%
+  as_tibble() %>%
+  select(V1, V2, sample_name, host_id, year, host_site, host_species, collection_depth) %>%
+  arrange(host_id, year)
+
+ggplot(orbdf, aes(x = V1, y = V2, color = host_species)) +
+  geom_point(aes(shape = year)) +
+  geom_path(aes(group = host_id), arrow = arrow(length = unit(0.1, "inches"), type = "open"))
+
+
+# Just Orb that are Cdom the whole time
+orb <- merge_phyloseq(tax_table(variants), otu_table(variants), 
+                       subset(sample_data(variants), host_genus == "Orbicella" & 
+                                        host_id %in% c("3", "47", "56", "80", "81", "40", "18", "65", "67")))
+orb <- prune_taxa(taxa_sums(orb) != 0, orb)
+orbr = transform_sample_counts(orb, function(x) x/sum(x))
+
+orbdistmat <- vegan::vegdist(sqrt(otu_table(orbr)), method = "bray")
+
+orbdf <- as.data.frame(cmdscale(orbdistmat, k = 2)) %>%
+  mutate(sample_name = rownames(.)) %>%
+  left_join(sample_data(orb)) %>%
+  as_tibble() %>%
+  select(V1, V2, sample_name, host_id, year, host_site, host_species, collection_depth) %>%
+  arrange(host_id, year)
+
+ggplot(orbdf, aes(x = V1, y = V2, color = host_species)) +
+  geom_point(aes(shape = year)) +
+  geom_path(aes(group = host_id), arrow = arrow(length = unit(0.1, "inches"), type = "open")) +
+  labs(title = "Just Cladocopium-dominated Orbicella")
+
+# Orb that had multiple clades
+orb <- merge_phyloseq(tax_table(variants), otu_table(variants), 
+                       subset(sample_data(variants), host_genus == "Orbicella" & 
+                                        host_id %in% c("17", "24", "64")))
+orb <- prune_taxa(taxa_sums(orb) != 0, orb)
+orbr = transform_sample_counts(orb, function(x) x/sum(x))
+
+orbdistmat <- vegan::vegdist(sqrt(otu_table(orbr)), method = "bray")
+
+orbdf <- as.data.frame(cmdscale(orbdistmat, k = 2)) %>%
+  mutate(sample_name = rownames(.)) %>%
+  left_join(sample_data(orb)) %>%
+  as_tibble() %>%
+  select(V1, V2, sample_name, host_id, year, host_site, host_species, collection_depth) %>%
+  arrange(host_id, year)
+
+ggplot(orbdf, aes(x = V1, y = V2, color = host_species)) +
+  geom_point(aes(shape = year)) +
+  geom_path(aes(group = host_id), arrow = arrow(length = unit(0.1, "inches"), type = "open")) +
+  labs(title = "Orbicella that changed dominant clade")
+```
 
 ### *Pseudodiploria strigosa*
 ```{r strigosa_summary, fig.width = 11}
@@ -267,12 +436,75 @@ plot_both2(host_species == "strigosa")
 
 *P. strigosa* colonies contain mostly *Breviolum* profiles, with some evidences for changes among *Breviolum* types over time. Two colonies at East Tektite (45 and 54) are dominated by *Cladocopium*.
 
+```{r}
+# NMDS for Pstr
+pstr <- merge_phyloseq(tax_table(variants), otu_table(variants), 
+                       subset(sample_data(variants), host_species == "strigosa"))
+pstr <- prune_taxa(taxa_sums(pstr) != 0, pstr)
+pstrr = transform_sample_counts(pstr, function(x) x/sum(x))
+
+pstrdistmat <- vegan::vegdist(sqrt(otu_table(pstrr)), method = "bray")
+
+pstrdf <- as.data.frame(cmdscale(pstrdistmat, k = 2)) %>%
+  mutate(sample_name = rownames(.)) %>%
+  left_join(sample_data(pstr)) %>%
+  as_tibble() %>%
+  select(V1, V2, sample_name, host_id, year, host_site, collection_depth) %>%
+  arrange(host_id, year)
+
+ggplot(pstrdf, aes(x = V1, y = V2, color = host_id)) +
+  geom_point(aes(shape = year)) +
+  geom_path(aes(group = host_id), arrow = arrow(length = unit(0.1, "inches"), type = "open"))
+
+# Just Bdom Pstr
+pstr <- merge_phyloseq(tax_table(variants), otu_table(variants), 
+                       subset(sample_data(variants), host_species == "strigosa" & 
+                                host_id %in% c("10", "82", "42", "28", "66", "68")))
+pstr <- prune_taxa(taxa_sums(pstr) != 0, pstr)
+pstrr = transform_sample_counts(pstr, function(x) x/sum(x))
+
+pstrdistmat <- vegan::vegdist(sqrt(otu_table(pstrr)), method = "bray")
+
+pstrdf <- as.data.frame(cmdscale(pstrdistmat, k = 2)) %>%
+  mutate(sample_name = rownames(.)) %>%
+  left_join(sample_data(pstr)) %>%
+  as_tibble() %>%
+  select(V1, V2, sample_name, host_id, year, host_site, collection_depth) %>%
+  arrange(host_id, year)
+
+ggplot(pstrdf, aes(x = V1, y = V2, color = host_id)) +
+  geom_point(aes(shape = year)) +
+  geom_path(aes(group = host_id), arrow = arrow(length = unit(0.1, "inches"), type = "open")) +
+  labs(title = "Just Breviolum-dominated P.str.")
+```
+
 ### *Siderastrea siderea*
 ```{r siderea_summary, fig.width = 11}
 plot_both2(host_species == "siderea")
 ```
 
 *S. siderea* hosts mainly *Cladocopium* profiles that do not change over time. A couple of colonies (7 and 73) may have fluctuating levels of multiple *Cladocopium* types. One colony at Cabritte Horn (51) is dominated by *Breviolum*.
+
+```{r}
+# NMDS for Ssid
+ssid <- merge_phyloseq(tax_table(variants), otu_table(variants), 
+                       subset(sample_data(variants), host_species == "siderea" & host_id != "RANDOM"))
+ssid <- prune_taxa(taxa_sums(ssid) != 0, ssid)
+ssidr = transform_sample_counts(ssid, function(x) x/sum(x))
+
+ssiddistmat <- vegan::vegdist(sqrt(otu_table(ssidr)), method = "bray")
+
+ssiddf <- as.data.frame(cmdscale(ssiddistmat, k = 2)) %>%
+  mutate(sample_name = rownames(.)) %>%
+  left_join(sample_data(ssid)) %>%
+  as_tibble() %>%
+  select(V1, V2, sample_name, host_id, year, host_site, collection_depth) %>%
+  arrange(host_id, year)
+
+ggplot(ssiddf, aes(x = V1, y = V2, color = host_id)) +
+  geom_point(aes(shape = year)) +
+  geom_path(aes(group = host_id), arrow = arrow(length = unit(0.1, "inches"), type = "open"))
+```
 
 # Detailed figures for each coral colony
 
