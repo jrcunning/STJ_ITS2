@@ -226,6 +226,31 @@ plot_both2 <- function(...) {
 }
 ```
 
+```{r ggplot_theme}
+# Create custom ggplot theme
+theme_custom <- function() {
+  theme_bw(base_size = 10, base_family = "Arial") %+replace%
+    theme(
+      panel.grid.major = element_blank(), 
+      panel.grid.minor = element_blank(), 
+      panel.background = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA),
+      legend.background = element_rect(fill = NA, colour = NA)
+    )
+}
+
+scale_color_corals <- function(...){
+    ggplot2:::manual_scale(
+        c('color', 'fill'),
+        values = setNames(c('#00BFC4', '#CD9600', '#7CAE00', '#00BE67', 
+                            '#F8766D', '#00A9FF', '#C77CFF', '#FF61CC'),
+                          c('annularis', 'cavernosa', 'faveolata', 'franksi', 
+                            'labrynthiformis', 'natans', 'siderea', 'strigosa')), 
+        ...
+    )
+}
+```
+
 # 1. Symbiont community variability
 
 ### Ordination for all coral samples
@@ -233,6 +258,61 @@ plot_both2 <- function(...) {
 # Convert to relative abundance - and square root transform
 varr <- transform_sample_counts(variants, function(x) sqrt(x/sum(x)))     # Square-root transform
 
+# Run NMDS for visualization
+set.seed(53)
+varr.nmds <- ordinate(varr, "NMDS", "bray")
+varr.nmds.s <- plot_ordination(varr, varr.nmds, type="samples")
+varr.nmds.t <- plot_ordination(varr, varr.nmds, type="taxa")
+
+# Calculate centroids for each species for plotting
+centroids <- varr.nmds.s$data %>%
+  group_by(host_species) %>%
+  summarise(across(starts_with("NMDS"), mean, .names = "o{.col}")) %>%
+  right_join(varr.nmds.s$data)
+
+# Plot NMDS
+nmds_plot <- ggplot(centroids, aes(x = NMDS1, y = NMDS2, color = host_species)) +
+  geom_point() +
+  geom_segment(aes(xend = oNMDS1, yend = oNMDS2)) +
+  theme_custom() +
+  scale_color_corals(); nmds_plot
+
+# Calculate beta diversity as distance to centroid (PCoA) for each host species
+bd <- vegan::betadisper(d = distmat, group = sample_data(varr)$host_species,
+                        type = "centroid", bias.adjust = FALSE)
+bdres <- as_tibble(sample_data(varr)) %>%
+  select(host_id, year, sample_name, host_species) %>%
+  mutate(dist_to_centroid = bd$distances)
+
+# Analyze differences in distance to centroid among coral species
+mod <- lm(dist_to_centroid ~ host_species, data = bdres)
+anova(mod)
+emm <- emmeans(mod, specs = "host_species") %>%
+  as_tibble() %>%
+  mutate(host_species = fct_reorder(host_species, emmean, .desc = TRUE))
+
+# Plot beta diversity
+bd_plot <- ggplot(emm, aes(x = host_species, y = emmean, color = host_species)) +
+  geom_col(aes(fill = host_species), width = 0.8) +
+  geom_errorbar(aes(ymin = emmean - SE, ymax = emmean + SE), width = 0) +
+  geom_text(aes(label = host_species, y = 0.01), color = "black", hjust = 0, angle = 90, size = 3) +
+  theme_custom() +
+  scale_color_corals() +
+  theme(axis.text.x = element_text(color = "white")) +
+  theme(legend.position = "none") +
+  labs(x = "Coral species", y = "Distance to centroid"); bd_plot
+
+# Multipanel figure
+legend <- get_legend(nmds_plot)
+nmds_plot_nolegend <- nmds_plot + theme(legend.position = "none")
+right_side <- plot_grid(legend, bd_plot, ncol = 1)
+cowplot::plot_grid(nmds_plot_nolegend, right_side, nrow = 1, rel_widths = c(0.7, 0.3))
+
+
+```
+
+
+```{r}
 # Bray-Curtis distance matrix
 distmat <- vegan::vegdist(otu_table(varr), method = "bray")
 
@@ -244,43 +324,6 @@ varrdf <- as.data.frame(cmdscale(distmat, k = 50)) %>%      # Specify k dimensio
   select(starts_with("V"), host_species, host_id, year, host_site, collection_depth) %>%
   arrange(host_id, year)
 
-# Visualize ordination
-# ggplot(varrdf, aes(x = V1, y = V2, color = host_species)) +
-#   geom_point(aes(shape = year)) +
-#   geom_path(aes(group = host_id), arrow = arrow(length = unit(0.1, "inches"), type = "open"))
-# Phyloseq NMDS
-ord <- ordinate(varr, "NMDS", "bray")
-plot_ordination(varr, ord, type = "samples") +
-  geom_polygon(aes(fill = host_species))
-
-
-# Calculate beta diversity as distance to centroid of each host species
-bd <- betad(phy = varr, group = "host_species")
-bd <- vegan::betadisper(d = distmat, group = sample_data(varr)$host_species,
-                        type = "centroid", bias.adjust = FALSE)
-bdres <- as_tibble(sample_data(varr)) %>%
-  select(host_id, year, sample_name, host_species) %>%
-  mutate(dist_to_centroid = bd$distances)
-
-bdsumm <- bdres %>%
-  group_by(host_species) %>%
-  summarize(meandist = mean(dist_to_centroid),
-            se = sd(dist_to_centroid)/sqrt(length(dist_to_centroid)))
-
-# Analyze differences in distance to centroid among coral species
-mod <- lm(dist_to_centroid ~ host_species, data = bdres)
-anova(mod)
-emm <- emmeans(mod, specs = "host_species")
-
-tibble(data.frame(emm)) %>%
-  mutate(host_species = fct_reorder(host_species, emmean, .desc = TRUE)) %>%
-  ggplot(aes(x = host_species, y = emmean)) +
-  geom_point() +
-  geom_errorbar(aes(ymin = emmean - SE, ymax = emmean + SE))
-```
-
-
-```{r}
 # Calculate distance moved (in ordination space) from year to year for each colony 
 dists <- varrdf %>%
   group_by(host_id) %>%
