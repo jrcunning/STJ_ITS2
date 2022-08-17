@@ -239,9 +239,9 @@ theme_custom <- function() {
     )
 }
 
-scale_color_corals <- function(...){
+scale_color_corals <- function(aesthetic, ...){
     ggplot2:::manual_scale(
-        c('color', 'fill'),
+        aesthetic,
         values = setNames(c('#00BFC4', '#CD9600', '#7CAE00', '#00BE67', 
                             '#F8766D', '#00A9FF', '#C77CFF', '#FF61CC'),
                           c('annularis', 'cavernosa', 'faveolata', 'franksi', 
@@ -251,7 +251,7 @@ scale_color_corals <- function(...){
 }
 ```
 
-# 1. Symbiont community variability
+# 1. Symbiont community variability among and within coral species - beta diversity
 
 ### Ordination for all coral samples
 ```{r}
@@ -271,15 +271,34 @@ centroids <- varr.nmds.s$data %>%
   right_join(varr.nmds.s$data)
 
 # Plot NMDS
-nmds_plot <- ggplot(centroids, aes(x = NMDS1, y = NMDS2, color = host_species)) +
+## Version with only coral samples and centroids
+nmds_plot <- ggplot(centroids, aes(x = NMDS1, y = NMDS2)) +
+  #geom_point(data = varr.nmds.t$data, aes(fill = clade, shape = clade), stroke = NA, alpha = 0.5) +
   geom_point() +
-  geom_segment(aes(xend = oNMDS1, yend = oNMDS2)) +
+  geom_segment(aes(xend = oNMDS1, yend = oNMDS2, color = host_species)) +
   theme_custom() +
-  scale_color_corals(); nmds_plot
+  scale_shape_manual(values = 21:25) +
+  scale_color_corals('color') +
+  scale_color_corals('fill'); nmds_plot
+
+## Version with coral samples and centroids overlaying symbiont clade contours
+nmds_plot <- as_tibble(varr.nmds.t$data) %>%
+  ggplot(aes(x = NMDS1, y = NMDS2)) +
+  stat_density_2d(aes(fill = clade),
+                  data = filter(as_tibble(varr.nmds.t$data), clade != "G"),
+                  geom = "polygon", bins = 10, alpha = 0.1, lwd = 0) +
+  theme_custom() +
+  # # Add coral species ordispiders
+  geom_point(data = centroids, aes(color = host_species)) +
+  geom_segment(data = centroids, aes(xend = oNMDS1, yend = oNMDS2, color = host_species), alpha = 0.8) +
+  scale_fill_manual(values = c('#ffff99', '#b2df8a', '#a6cee3', '#fb9a99')) +
+  #scale_color_manual(values = c('#1f78b4', '#33a02c', '#e31a1c', '#b15928', '#ff7f00', '#cab2d6', '#6a3d9a', '#fdbf6f'))
+  scale_color_corals('color'); nmds_plot
 
 # Calculate beta diversity as distance to centroid (PCoA) for each host species
 bd <- vegan::betadisper(d = distmat, group = sample_data(varr)$host_species,
                         type = "centroid", bias.adjust = FALSE)
+permutest(bd, pairwise = TRUE)
 bdres <- as_tibble(sample_data(varr)) %>%
   select(host_id, year, sample_name, host_species) %>%
   mutate(dist_to_centroid = bd$distances)
@@ -287,9 +306,11 @@ bdres <- as_tibble(sample_data(varr)) %>%
 # Analyze differences in distance to centroid among coral species
 mod <- lm(dist_to_centroid ~ host_species, data = bdres)
 anova(mod)
+### Are these stats valid, or do we need stats from betadisper() / permutation tests?
 emm <- emmeans(mod, specs = "host_species") %>%
   as_tibble() %>%
   mutate(host_species = fct_reorder(host_species, emmean, .desc = TRUE))
+
 
 # Plot beta diversity
 bd_plot <- ggplot(emm, aes(x = host_species, y = emmean, color = host_species)) +
@@ -297,7 +318,8 @@ bd_plot <- ggplot(emm, aes(x = host_species, y = emmean, color = host_species)) 
   geom_errorbar(aes(ymin = emmean - SE, ymax = emmean + SE), width = 0) +
   geom_text(aes(label = host_species, y = 0.01), color = "black", hjust = 0, angle = 90, size = 3) +
   theme_custom() +
-  scale_color_corals() +
+  scale_color_corals('color') +
+  scale_color_corals('fill') +
   theme(axis.text.x = element_text(color = "white")) +
   theme(legend.position = "none") +
   labs(x = "Coral species", y = "Distance to centroid"); bd_plot
@@ -307,17 +329,15 @@ legend <- get_legend(nmds_plot)
 nmds_plot_nolegend <- nmds_plot + theme(legend.position = "none")
 right_side <- plot_grid(legend, bd_plot, ncol = 1)
 cowplot::plot_grid(nmds_plot_nolegend, right_side, nrow = 1, rel_widths = c(0.7, 0.3))
-
-
 ```
 
-
+# 2. How dynamic are coral symbiont communities within individual colonies? (change over time)
 ```{r}
 # Bray-Curtis distance matrix
 distmat <- vegan::vegdist(otu_table(varr), method = "bray")
 
 # Principal Coordinates Analysis
-varrdf <- as.data.frame(cmdscale(distmat, k = 50)) %>%      # Specify k dimensions   #####
+varrdf <- as.data.frame(cmdscale(distmat, k = nsamples(varr) - 1)) %>%      # Specify k dimensions   #####
   mutate(sample_name = rownames(.)) %>%
   left_join(sample_data(varr)) %>%
   as_tibble() %>%
@@ -341,9 +361,6 @@ dists <- varrdf %>%
   select(host_id, host_species, host_site, y1, y2, distance) %>%
   rowwise() %>%
   mutate(period = paste(y1, y2, sep = "-"))
-dists
-
-dists  %>% filter(host_species == "natans") %>% arrange(-distance)
 
 # Plot movement by species
 dists %>%
@@ -365,36 +382,97 @@ emm <- emmeans(mod, specs = c("period", "host_species"), type = "response")
 contrast(emm, by = "host_species")
 
 # Get model means and combine with zeros as baseline
+ord18 <- as_tibble(emm) %>% filter(period == "2017-2018") %>% arrange(-response)
+ord18
+
 res <- as_tibble(emm) %>%
   filter(period %in% c("2017-2018", "2017-2019")) %>%
   full_join(tibble(period = "2017", distinct(varrdf, host_species), response = 0)) %>%
-  mutate(host_species = fct_reorder(host_species, response, .desc = TRUE))
+  mutate(host_species = factor(host_species, levels = c("cavernosa", "siderea", "annularis", "natans",
+                                                        "labrynthiformis", "franksi", "faveolata", "strigosa")))
 
 # Plot
 res %>%
   ggplot(aes(x = period, y = response, color = host_species, group = host_species)) + 
   geom_point(position = position_dodge(width = 0.3)) +
   geom_errorbar(aes(ymin = response - SE, ymax = response + SE), position = position_dodge(width = 0.3), width = 0.1) +
-  geom_line(position = position_dodge(width = 0.3))
+  geom_line(position = position_dodge(width = 0.3)) +
+  theme_custom()
 
+# Visualize NMDS movement?
+varr.mv <- subset_samples(varr, host_species %in% c("cavernosa", "siderea", "annularis"))
+mv.ord <- ordinate(varr.mv, "NMDS", "bray")
+mv.ord.s <- plot_ordination(varr.mv, mv.ord, type="samples")
+mv.ord.s2 <- mv.ord.s$data %>% arrange(host_id, year)
+ggplot(mv.ord.s2, aes(x = NMDS1, y = NMDS2, color = host_species, group = host_id)) +
+  geom_point(aes(shape = year)) +
+  geom_path(aes(group = host_id), arrow = arrow(length = unit(0.1, "inches"), type = "open"))
 
-
-
-
-
-varr.nmds <- ordinate(varr, method="NMDS", distance="bray", k=2)
-varr.nmds$stress  # Stress value
-varr.nmds.s <- plot_ordination(varr, varr.nmds, type="samples")
-varr.nmds.t <- plot_ordination(varr, varr.nmds, type="taxa")
-
-ggplot(varr.nmds.t$data, aes(x = NMDS1, y = NMDS2)) +
-  geom_point(aes(shape = clade)) +
-  geom_point(data = varr.nmds.s$data, aes(color = host_species)) +
-  #geom_label(data = varr.nmds.s$data, aes(label = host_id)) +
-  geom_path(data = varr.nmds.s$data, aes(group = host_id, color = host_species),
-            arrow = arrow(length = unit(0.1, "inches"), type = "open")) +
-  scale_shape_manual(values = 1:5)
+ggplot(mv.ord.s2, aes(x = NMDS1, y = NMDS2, color = host_species, shape = year)) +
+  geom_point() +
+  stat_ellipse()
 ```
+
+# Which symbionts are changing over time?
+```{r}
+library(MCMC.OTU)
+
+# MCAV
+physeq <- subset_samples(variants, host_species == "cavernosa")
+otus <- data.frame(otu_table(physeq), check.names=F)
+mcmc <- data.frame(year=sample_data(physeq)$year, host_species=sample_data(physeq)$host_species, 
+                   host_id = sample_data(physeq)$host_id, sample=rownames(sample_data(physeq)),
+                   otus, check.names=F)
+goods <- purgeOutliers(mcmc, count.columns=5:ncol(mcmc), otu.cut=0.001)    # Remove OTUs comprising < 0.1% total counts
+gss <- otuStack(goods, count.columns=c(5:length(goods[1, ])), condition.columns=c(1:4)) # Stack the data
+mm <- mcmc.otu(fixed="year", data=gss, nitt=55000, thin=50, burnin=5000)  # Fit the model 
+  
+acpass <- otuByAutocorr(mm, gss)  # Selecting the OTUs that were modeled reliably
+smm0 <- OTUsummary(mm, gss, otus=acpass, summ.plot=FALSE)   # Diff & p-vals btw all pairs of factor combinations
+smmA <- padjustOTU(smm0)    # Adjust p-values for multiple comparisons
+sigs <- signifOTU(smmA, p.cutoff=0.1)    # Significant OTUs at FDR level
+
+smm1 <- OTUsummary(mm, gss, otus=sigs, summ.plot=FALSE)
+taxinfo <- data.frame(otu=rownames(tax_table(physeq)),
+                      clade=data.frame(tax_table(physeq))$clade,
+                      DIV=data.frame(tax_table(physeq))$DIV)
+summary <- merge(smm1$summary, taxinfo, by="otu")
+
+summary %>%
+  mutate(perc = 10^mean * 100)
+
+ggplot(summary, aes(x = year, y = mean)) + geom_point()
+# B1 goes up in 2018 then back down in 2019. This is just one seq though... can we glom to clade level to get an idea of what the relative abundance of all B seqs was in Mcav over time?
+
+# SIDEREA - nothing significant
+# ANNULARIS / ORBICELLA - nothing significant
+# all corals? - nothing significant
+physeq <- subset_samples(variants, host_id == 7)
+otus <- data.frame(otu_table(physeq), check.names=F)
+mcmc <- data.frame(year=sample_data(physeq)$year, host_species=sample_data(physeq)$host_species, 
+                   host_id = sample_data(physeq)$host_id, sample=rownames(sample_data(physeq)),
+                   otus, check.names=F)
+goods <- purgeOutliers(mcmc, count.columns=5:ncol(mcmc), otu.cut=0.001)    # Remove OTUs comprising < 0.1% total counts
+gss <- otuStack(goods, count.columns=c(5:length(goods[1, ])), condition.columns=c(1:4)) # Stack the data
+mm <- mcmc.otu(fixed="year", data=gss, nitt=55000, thin=50, burnin=5000)  # Fit the model 
+  
+acpass <- otuByAutocorr(mm, gss)  # Selecting the OTUs that were modeled reliably
+smm0 <- OTUsummary(mm, gss, otus=acpass, summ.plot=FALSE)   # Diff & p-vals btw all pairs of factor combinations
+smmA <- padjustOTU(smm0)    # Adjust p-values for multiple comparisons
+sigs <- signifOTU(smmA, p.cutoff=0.7)    # Significant OTUs at FDR level
+
+smm1 <- OTUsummary(mm, gss, otus=sigs, summ.plot=FALSE)
+taxinfo <- data.frame(otu=rownames(tax_table(physeq)),
+                      clade=data.frame(tax_table(physeq))$clade,
+                      DIV=data.frame(tax_table(physeq))$DIV)
+summary <- merge(smm1$summary, taxinfo, by="otu")
+
+summary %>%
+  mutate(perc = 10^mean * 100)
+
+ggplot(summary, aes(x = year, y = mean)) + geom_point()
+```
+
 
 # Ecological data from Pete
 ```{r}
