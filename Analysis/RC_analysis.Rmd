@@ -19,7 +19,7 @@ library(scales)
 library(RColorBrewer)
 ```
 
-
+# Load Data
 ```{r profiles, include = FALSE}
 sam0 <- read_csv("Data/STJ_Metadata_2017_2019.csv") %>%
   clean_names()
@@ -80,15 +80,6 @@ save(profiles, variants, file = "data/Symb_phyloseq.RData")
 ```
 
 ```{r QC, include = FALSE}
-ntaxa(variants)
-ntaxa(profiles)
-
-min(sample_sums(variants))
-max(sample_sums(variants))
-hist(log10(sample_sums(variants)))
-mean(sample_sums(variants))
-sd(sample_sums(variants))/sqrt(nsamples(variants))
-
 # Filter out samples with low read counts
 low <- sample_sums(variants) < 1000
 variants <- subset_samples(variants, !low)
@@ -96,24 +87,31 @@ variants <- prune_taxa(taxa_sums(variants) != 0, variants)
 profiles <- subset_samples(profiles, !low)
 profiles <- prune_taxa(taxa_sums(profiles) != 0, profiles)
 
-ntaxa(variants)
-ntaxa(profiles)
+# Filter out RANDOM samples (non-tagged colonies)
+variants <- subset_samples(variants, host_id != "RANDOM")
+variants <- prune_taxa(taxa_sums(variants) != 0, variants)
+profiles <- subset_samples(profiles, host_id != "RANDOM")
+profiles <- prune_taxa(taxa_sums(profiles) != 0, profiles)
 
+# Filter out P. furcata (only one colony sampled after first tagging)
+variants <- subset_samples(variants, host_species != "furcata")
+variants <- prune_taxa(taxa_sums(variants) != 0, variants)
+profiles <- subset_samples(profiles, host_species != "furcata")
+profiles <- prune_taxa(taxa_sums(profiles) != 0, profiles)
 
+# Read count analysis
+# ntaxa(variants)
+# ntaxa(profiles)
+# min(sample_sums(variants))
+# max(sample_sums(variants))
+# mean(sample_sums(variants))
+# sd(sample_sums(variants))/sqrt(nsamples(variants))
 
-# Transform to relative abundance
-#variants <- transform_sample_counts(variants, fun = function(x) x / sum(x))
-#profiles <- transform_sample_counts(profiles, fun = function(x) x / sum(x))
+hist(log10(sample_sums(variants)))
 ```
 
+# Create custom functions, color palettes, and ggplot themes
 ```{r color_palettes, include = FALSE}
-# # Subset colonies sampled in all three years
-# all3 <- sample_data(profiles) %>%
-#   group_by(host_id) %>%
-#   filter(n() == 3) %>%
-#   distinct(host_id) %>%
-#   pull(host_id)
-
 # Create standardized color pallettes for plotting profiles and variants
 
 #ppal <- sample(allcolors, ntaxa(profiles))
@@ -228,6 +226,157 @@ plot_both2 <- function(...) {
 }
 ```
 
+# 1. Symbiont community variability
+
+### Ordination for all coral samples
+```{r}
+# Convert to relative abundance - and square root transform
+varr <- transform_sample_counts(variants, function(x) sqrt(x/sum(x)))     # Square-root transform
+
+# Bray-Curtis distance matrix
+distmat <- vegan::vegdist(otu_table(varr), method = "bray")
+
+# Principal Coordinates Analysis
+varrdf <- as.data.frame(cmdscale(distmat, k = 50)) %>%      # Specify k dimensions   #####
+  mutate(sample_name = rownames(.)) %>%
+  left_join(sample_data(varr)) %>%
+  as_tibble() %>%
+  select(starts_with("V"), host_species, host_id, year, host_site, collection_depth) %>%
+  arrange(host_id, year)
+
+# Visualize ordination
+# ggplot(varrdf, aes(x = V1, y = V2, color = host_species)) +
+#   geom_point(aes(shape = year)) +
+#   geom_path(aes(group = host_id), arrow = arrow(length = unit(0.1, "inches"), type = "open"))
+# Phyloseq NMDS
+ord <- ordinate(varr, "NMDS", "bray")
+plot_ordination(varr, ord, type = "samples") +
+  geom_polygon(aes(fill = host_species))
+
+
+# Calculate beta diversity as distance to centroid of each host species
+bd <- betad(phy = varr, group = "host_species")
+bd <- vegan::betadisper(d = distmat, group = sample_data(varr)$host_species,
+                        type = "centroid", bias.adjust = FALSE)
+bdres <- as_tibble(sample_data(varr)) %>%
+  select(host_id, year, sample_name, host_species) %>%
+  mutate(dist_to_centroid = bd$distances)
+
+bdsumm <- bdres %>%
+  group_by(host_species) %>%
+  summarize(meandist = mean(dist_to_centroid),
+            se = sd(dist_to_centroid)/sqrt(length(dist_to_centroid)))
+
+# Analyze differences in distance to centroid among coral species
+mod <- lm(dist_to_centroid ~ host_species, data = bdres)
+anova(mod)
+emm <- emmeans(mod, specs = "host_species")
+
+tibble(data.frame(emm)) %>%
+  mutate(host_species = fct_reorder(host_species, emmean, .desc = TRUE)) %>%
+  ggplot(aes(x = host_species, y = emmean)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = emmean - SE, ymax = emmean + SE))
+```
+
+
+```{r}
+# Calculate distance moved (in ordination space) from year to year for each colony 
+dists <- varrdf %>%
+  group_by(host_id) %>%
+  #filter(n() == 3) %>%
+  nest(data = c(year, starts_with("V"))) %>%
+  mutate(years = map(data, ~.[,1]),
+         points = map(data, ~.[,-1])) %>%
+  mutate(d = map(points, dist),
+         pd = map(d, broom::tidy)) %>%
+  unnest(pd) %>%
+  mutate(y1 = map2_chr(item1, years, ~case_when(.x == 1 ~ .y[[1]][1],
+                                                .x == 2 ~ .y[[1]][2])),
+         y2 = map2_chr(item2, years, ~case_when(.x == 2 ~ .y[[1]][2],
+                                                .x == 3 ~ .y[[1]][3]))) %>%
+  select(host_id, host_species, host_site, y1, y2, distance) %>%
+  rowwise() %>%
+  mutate(period = paste(y1, y2, sep = "-"))
+dists
+
+dists  %>% filter(host_species == "natans") %>% arrange(-distance)
+
+# Plot movement by species
+dists %>%
+  mutate(gap = as.numeric(y2) - as.numeric(y1)) %>%
+  filter(gap == min(gap)) %>%                         # selects 1-year gaps only for cols sampled 3x
+  ggplot(aes(x = host_species, y = distance)) +
+  geom_violin() +
+  geom_point(aes(color = host_site))
+
+# Plot movement by year / species
+ggplot(dists, aes(x = interaction(y1,y2), y = distance, color = host_species)) +
+  geom_point()
+
+
+mod <- lmer(log(distance) ~ period * host_species + (1|host_id), data = filter(dists, period %in% c("2017-2018", "2017-2019")))
+hist(residuals(mod))
+car::Anova(mod)
+emm <- emmeans(mod, specs = c("period", "host_species"), type = "response")
+contrast(emm, by = "host_species")
+
+# Get model means and combine with zeros as baseline
+res <- as_tibble(emm) %>%
+  filter(period %in% c("2017-2018", "2017-2019")) %>%
+  full_join(tibble(period = "2017", distinct(varrdf, host_species), response = 0)) %>%
+  mutate(host_species = fct_reorder(host_species, response, .desc = TRUE))
+
+# Plot
+res %>%
+  ggplot(aes(x = period, y = response, color = host_species, group = host_species)) + 
+  geom_point(position = position_dodge(width = 0.3)) +
+  geom_errorbar(aes(ymin = response - SE, ymax = response + SE), position = position_dodge(width = 0.3), width = 0.1) +
+  geom_line(position = position_dodge(width = 0.3))
+
+
+
+
+
+
+varr.nmds <- ordinate(varr, method="NMDS", distance="bray", k=2)
+varr.nmds$stress  # Stress value
+varr.nmds.s <- plot_ordination(varr, varr.nmds, type="samples")
+varr.nmds.t <- plot_ordination(varr, varr.nmds, type="taxa")
+
+ggplot(varr.nmds.t$data, aes(x = NMDS1, y = NMDS2)) +
+  geom_point(aes(shape = clade)) +
+  geom_point(data = varr.nmds.s$data, aes(color = host_species)) +
+  #geom_label(data = varr.nmds.s$data, aes(label = host_id)) +
+  geom_path(data = varr.nmds.s$data, aes(group = host_id, color = host_species),
+            arrow = arrow(length = unit(0.1, "inches"), type = "open")) +
+  scale_shape_manual(values = 1:5)
+```
+
+# Ecological data from Pete
+```{r}
+ecodat <- readxl::read_xls("Data/For_Cunning_Lenz_paper copy.xls") %>%
+  clean_names()
+
+ecomd <- ecodat %>% select(1:5)
+ecocomp <- ecodat %>% select(9:ncol(ecodat))
+
+ecolong <- ecodat %>%
+  pivot_longer(cols = 6:ncol(ecodat), names_to = "tax")
+
+mod <- lmer(log(value+0.001) ~ tax * factor(year) + (1|quadrat/site), data = ecolong)
+car::Anova(mod)
+
+as_tibble(emmeans(mod, specs = c("year", "tax"))) %>%
+  filter(tax %in% c("orbicella", "diploria", "montastraea", "montastrea_cav", "colpophyllia", "siderastrea")) %>%
+  ggplot(aes(x = year, y = emmean, color = tax, group = tax)) +
+  geom_point() +
+  geom_line()
+  
+```
+
+
+
 # Summary figures for each species
 
 The top row of bars shows all ITS2 sequence variants, while the bottom row of bars shows the associated ITS2 profiles. Legend refers to profiles only, not variants.
@@ -293,7 +442,7 @@ One colony at East Tektite (57) was dominated by *Cladocopium*, but otherwise *D
 dlab <- merge_phyloseq(tax_table(variants), otu_table(variants), 
                        subset(sample_data(variants), host_species == "labrynthiformis"))
 dlab <- prune_taxa(taxa_sums(dlab) != 0, dlab)
-dlabr = transform_sample_counts(dlab, function(x) x/sum(x))
+dlabr = transform_sample_counts(dlab, function(x) sqrt(x/sum(x)))
 
 dlabdistmat <- vegan::vegdist(sqrt(otu_table(dlabr)), method = "bray")
 
@@ -330,6 +479,32 @@ ggplot(dlabdf, aes(x = V1, y = V2, color = host_id)) +
   labs(title = "Just Breviolum-dominated D.lab.")
 ```
 
+### *Porites furcata*
+```{r labrynthiformis_summary, fig.width = 11}
+plot_both2(host_species == "furcata")
+```
+
+```{r}
+# NMDS for P. fur
+pfur <- merge_phyloseq(tax_table(variants), otu_table(variants), 
+                       subset(sample_data(variants), host_species == "furcata"))
+pfur <- prune_taxa(taxa_sums(pfur) != 0, pfur)
+pfurr = transform_sample_counts(pfur, function(x) x/sum(x))
+
+pfurdistmat <- vegan::vegdist(sqrt(otu_table(pfurr)), method = "bray")
+
+pfurdf <- as.data.frame(cmdscale(pfurdistmat, k = 2)) %>%
+  mutate(sample_name = rownames(.)) %>%
+  left_join(sample_data(pfur)) %>%
+  as_tibble() %>%
+  select(V1, V2, sample_name, host_id, year, host_site, collection_depth) %>%
+  arrange(host_id, year)
+
+ggplot(pfurdf, aes(x = V1, y = V2, color = host_id)) +
+  geom_point(aes(shape = year)) +
+  geom_path(aes(group = host_id), arrow = arrow(length = unit(0.1, "inches"), type = "open"))
+```
+
 ### *Montastraea cavernosa*
 ```{r cavernosa_summary, fig.width = 11}
 plot_both2(host_species == "cavernosa")
@@ -342,7 +517,7 @@ plot_both2(host_species == "cavernosa")
 mcav <- merge_phyloseq(tax_table(variants), otu_table(variants), 
                        subset(sample_data(variants), host_species == "cavernosa"))
 mcav <- prune_taxa(taxa_sums(mcav) != 0, mcav)
-mcavr = transform_sample_counts(mcav, function(x) x/sum(x))
+mcavr = transform_sample_counts(mcav, function(x) sqrt(x/sum(x)))
 
 mcavdistmat <- vegan::vegdist(sqrt(otu_table(mcavr)), method = "bray")
 
@@ -490,7 +665,7 @@ plot_both2(host_species == "siderea")
 ssid <- merge_phyloseq(tax_table(variants), otu_table(variants), 
                        subset(sample_data(variants), host_species == "siderea" & host_id != "RANDOM"))
 ssid <- prune_taxa(taxa_sums(ssid) != 0, ssid)
-ssidr = transform_sample_counts(ssid, function(x) x/sum(x))
+ssidr = transform_sample_counts(ssid, function(x) sqrt(x/sum(x)))
 
 ssiddistmat <- vegan::vegdist(sqrt(otu_table(ssidr)), method = "bray")
 
