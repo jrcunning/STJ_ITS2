@@ -10,13 +10,23 @@ knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
 ```
 
 ```{r libraries}
-library(tidyverse)
+
 library(janitor)
 library(phyloseq)  # BiocManager::install("phyloseq")
 library(cowplot)
 library(ggrepel)
 library(scales)
 library(RColorBrewer)
+library(MASS)
+library(lme4)
+library(emmeans)
+library(tidyverse)
+library(vegan)
+
+# library(conflicted)
+# conflict_prefer("select", "dplyr")
+# conflict_prefer("filter", "dplyr")
+# conflict_prefer("rename", "dplyr")
 ```
 
 # Load Data
@@ -75,39 +85,14 @@ otu <- otu_table(otu1, taxa_are_rows = FALSE)
 variants <- phyloseq(otu, tax, sam)
 ```
 
-```{r save, include = FALSE}
-save(profiles, variants, file = "data/Symb_phyloseq.RData")
-```
-
-```{r QC, include = FALSE}
-# Filter out samples with low read counts
-low <- sample_sums(variants) < 1000
-variants <- subset_samples(variants, !low)
-variants <- prune_taxa(taxa_sums(variants) != 0, variants)
-profiles <- subset_samples(profiles, !low)
-profiles <- prune_taxa(taxa_sums(profiles) != 0, profiles)
-
+```{r filter_save, include = FALSE}
 # Filter out RANDOM samples (non-tagged colonies)
 variants <- subset_samples(variants, host_id != "RANDOM")
 variants <- prune_taxa(taxa_sums(variants) != 0, variants)
 profiles <- subset_samples(profiles, host_id != "RANDOM")
 profiles <- prune_taxa(taxa_sums(profiles) != 0, profiles)
 
-# Filter out P. furcata (only one colony sampled after first tagging)
-variants <- subset_samples(variants, host_species != "furcata")
-variants <- prune_taxa(taxa_sums(variants) != 0, variants)
-profiles <- subset_samples(profiles, host_species != "furcata")
-profiles <- prune_taxa(taxa_sums(profiles) != 0, profiles)
-
-# Read count analysis
-# ntaxa(variants)
-# ntaxa(profiles)
-# min(sample_sums(variants))
-# max(sample_sums(variants))
-# mean(sample_sums(variants))
-# sd(sample_sums(variants))/sqrt(nsamples(variants))
-
-hist(log10(sample_sums(variants)))
+save(profiles, variants, file = "data/Symb_phyloseq.RData")
 ```
 
 # Create custom functions, color palettes, and ggplot themes
@@ -251,7 +236,7 @@ scale_color_corals <- function(aesthetic, ...){
 }
 ```
 
-```{r}
+```{r DAtesting_function}
 # DESEq2 differential abundance testing function
 deseqDA <- function(host_ids) {
   colData = data.frame(sample_data(variants))
@@ -294,6 +279,47 @@ deseqDA <- function(host_ids) {
 
 
 
+```
+
+# Table of all sampling done
+```{r}
+# Create table of number of tagged colonies sampled at each site at each year
+table1 <- as_tibble(sample_data(profiles)) %>%
+  drop_na(host_id) %>%
+  group_by(year, host_species, host_site) %>%
+  summarize(n = n()) %>%
+  arrange(host_site, year) %>%
+  pivot_wider(names_from = c(host_site, year), values_from = n) %>% 
+  adorn_totals(where = "row")
+
+write_csv(table1, path = "Output/Table1.csv")
+```
+
+```{r QC, include = FALSE}
+# Filter out samples with low read counts
+low <- sample_sums(variants) < 1000
+variants <- subset_samples(variants, !low)
+variants <- prune_taxa(taxa_sums(variants) != 0, variants)
+profiles <- subset_samples(profiles, !low)
+profiles <- prune_taxa(taxa_sums(profiles) != 0, profiles)
+
+
+
+# Filter out P. furcata (only one colony sampled after first tagging)
+# variants <- subset_samples(variants, host_species != "furcata")
+# variants <- prune_taxa(taxa_sums(variants) != 0, variants)
+# profiles <- subset_samples(profiles, host_species != "furcata")
+# profiles <- prune_taxa(taxa_sums(profiles) != 0, profiles)
+
+# Read count analysis
+# ntaxa(variants)
+# ntaxa(profiles)
+# min(sample_sums(variants))
+# max(sample_sums(variants))
+# mean(sample_sums(variants))
+# sd(sample_sums(variants))/sqrt(nsamples(variants))
+
+hist(log10(sample_sums(variants)))
 ```
 
 # 1. Symbiont community variability among and within coral species - beta diversity
@@ -340,6 +366,7 @@ nmds_plot <- as_tibble(varr.nmds.t$data) %>%
   #scale_color_manual(values = c('#1f78b4', '#33a02c', '#e31a1c', '#b15928', '#ff7f00', '#cab2d6', '#6a3d9a', '#fdbf6f'))
   scale_color_corals('color'); nmds_plot
 
+distmat <- vegan::vegdist(otu_table(varr), "bray")
 # Calculate beta diversity as distance to centroid (PCoA) for each host species
 bd <- vegan::betadisper(d = distmat, group = sample_data(varr)$host_species,
                         type = "centroid", bias.adjust = FALSE)
@@ -356,10 +383,19 @@ emm <- emmeans(mod, specs = "host_species") %>%
   as_tibble() %>%
   mutate(host_species = fct_reorder(host_species, emmean, .desc = TRUE))
 
+bdres %>%
+  mutate(host_species = factor(host_species, levels = levels(emm$host_species))) %>%
+  ggplot(aes(x = host_species, y = dist_to_centroid, color = host_species)) +
+    geom_point() +
+    geom_point(data = emm, aes(y = emmean), pch = 5, size = 5) +
+    geom_errorbar(data = emm, aes(y = emmean, ymin = emmean - SE, ymax = emmean + SE), width = 0.25) +
+    theme_custom() +
+    scale_color_corals('color')
 
 # Plot beta diversity
 bd_plot <- ggplot(emm, aes(x = host_species, y = emmean, color = host_species)) +
   geom_col(aes(fill = host_species), width = 0.8) +
+  geom_point() +
   geom_errorbar(aes(ymin = emmean - SE, ymax = emmean + SE), width = 0) +
   geom_text(aes(label = host_species, y = 0.01), color = "black", hjust = 0, angle = 90, size = 3) +
   theme_custom() +
@@ -445,21 +481,21 @@ res %>%
   theme_custom()
 
 # Visualize NMDS movement?
-varr.mv <- subset_samples(varr, host_species %in% c("cavernosa", "siderea", "annularis"))
-mv.ord <- ordinate(varr.mv, "NMDS", "bray")
-mv.ord.s <- plot_ordination(varr.mv, mv.ord, type="samples")
-mv.ord.s2 <- mv.ord.s$data %>% arrange(host_id, year)
-ggplot(mv.ord.s2, aes(x = NMDS1, y = NMDS2, color = host_species, group = host_id)) +
-  geom_point(aes(shape = year)) +
-  geom_path(aes(group = host_id), arrow = arrow(length = unit(0.1, "inches"), type = "open"))
-
-ggplot(mv.ord.s2, aes(x = NMDS1, y = NMDS2, color = host_species, shape = year)) +
-  geom_point() +
-  stat_ellipse()
+# varr.mv <- subset_samples(varr, host_species %in% c("cavernosa", "siderea", "annularis"))
+# mv.ord <- ordinate(varr.mv, "NMDS", "bray")
+# mv.ord.s <- plot_ordination(varr.mv, mv.ord, type="samples")
+# mv.ord.s2 <- mv.ord.s$data %>% arrange(host_id, year)
+# ggplot(mv.ord.s2, aes(x = NMDS1, y = NMDS2, color = host_species, group = host_id)) +
+#   geom_point(aes(shape = year)) +
+#   geom_path(aes(group = host_id), arrow = arrow(length = unit(0.1, "inches"), type = "open"))
+# 
+# ggplot(mv.ord.s2, aes(x = NMDS1, y = NMDS2, color = host_species, shape = year)) +
+#   geom_point() +
+#   stat_ellipse()
 ```
 
 # 2b. Which symbionts are changing over time within colonies/species?
-```{r}
+```{r mcmc.otu}
 library(MCMC.OTU)
 
 
@@ -469,7 +505,7 @@ otus <- data.frame(otu_table(physeq), check.names=F)
 mcmc <- data.frame(year=sample_data(physeq)$year, host_species=sample_data(physeq)$host_species, 
                    host_id = sample_data(physeq)$host_id, sample=rownames(sample_data(physeq)),
                    otus, check.names=F)
-goods <- purgeOutliers(mcmc, count.columns=5:ncol(mcmc), otu.cut=0.001)    # Remove OTUs comprising < 0.1% total counts
+goods <- purgeOutliers(mcmc, count.columns=5:ncol(mcmc), otu.cut=0.001)    # Remove OTUs comprising < 1% total counts
 gss <- otuStack(goods, count.columns=c(5:length(goods[1, ])), condition.columns=c(1:4)) # Stack the data
 mm <- mcmc.otu(fixed="year", data=gss, nitt=55000, thin=50, burnin=5000)  # Fit the model 
   
@@ -519,27 +555,7 @@ summary %>%
 ggplot(summary, aes(x = year, y = mean)) + geom_point()
 ```
 
-# 2b. symbiont changing over time -- can hierarchical clustering help here by identifying colonies that follow similar trajectories?
-```{r}
-
-# get long form data for all variants
-as_tibble(data.frame(otu_table(variants)), rownames = "sample_name") %>%
-  full_join(select(data.frame(sample_data(variants)), host_id, year, sample_name, host_genus, host_species))
-  pivot_longer()
-  
-  names(sample_data(variants))
-
-longdat <- as_tibble(select(data.frame(sample_data(variants)), 
-                            host_id, year, sample_name, host_genus, host_species)) %>%
-  full_join(as_tibble(data.frame(otu_table(variants)), rownames = "sample_name")) %>%
-  pivot_longer(cols = 6:ncol(.))
-
-# maybe long form data not the way to go. look at hclust on distmat
-# Bray-Curtis distance matrix
-distmat <- vegan::vegdist(otu_table(varr), method = "euclidean")
-clust <- hclust(distmat)
-plot(clust)
-
+```{r mcmc.otu2}
 # maybe need to pivot even wider with all OTU_Year combos as columns?
 widedat <- as_tibble(select(data.frame(sample_data(variants)), 
                             host_id, year, sample_name, host_genus, host_species)) %>%
@@ -562,7 +578,7 @@ plot(clust, labels = grp)
 # cavernosa49,6,39 --> B1 sig
 #natans52+strigosa45 --> nothing sig
 #orbicella80,81,40,3 --> nothing sig
-physeq <- subset_samples(variants, host_id %in% c(81,40,3))
+physeq <- subset_samples(variants, host_species == "cavernosa")
 otus <- data.frame(otu_table(physeq), check.names=F)
 mcmc <- data.frame(year=sample_data(physeq)$year, host_species=sample_data(physeq)$host_species, 
                    host_id = sample_data(physeq)$host_id, sample=rownames(sample_data(physeq)),
@@ -574,7 +590,7 @@ mm <- mcmc.otu(fixed="year", data=gss, nitt=55000, thin=50, burnin=5000)  # Fit 
 acpass <- otuByAutocorr(mm, gss)  # Selecting the OTUs that were modeled reliably
 smm0 <- OTUsummary(mm, gss, otus=acpass, summ.plot=FALSE)   # Diff & p-vals btw all pairs of factor combinations
 smmA <- padjustOTU(smm0)    # Adjust p-values for multiple comparisons
-sigs <- signifOTU(smmA, p.cutoff=.9)    # Significant OTUs at FDR level
+sigs <- signifOTU(smmA, p.cutoff=.1)    # Significant OTUs at FDR level
 
 smm1 <- OTUsummary(mm, gss, otus=sigs, summ.plot=FALSE)
 taxinfo <- data.frame(otu=rownames(tax_table(physeq)),
@@ -582,156 +598,35 @@ taxinfo <- data.frame(otu=rownames(tax_table(physeq)),
                       DIV=data.frame(tax_table(physeq))$DIV)
 summary <- merge(smm1$summary, taxinfo, by="otu")
 
-summary %>%
-  mutate(perc = 10^mean * 100)
-
-
-
-
+summary %>% mutate(perc = 10^mean * 100)
+#MCMC.OTU identifies B1 and B19 as increasing in 2018, then decreasing again in 2019
 ```
 
-```{r}
-# OK let's also try another DE method: ALDEx2 (nope -- too conservative and doesn't pick up significance for lower abundance features
-# OK lets do DESeq2
+```{r deseq2}
 library(DESeq2)
-colData = data.frame(sample_data(variants))
-colData$host_id <- factor(colData$host_id)
-dds <- DESeqDataSetFromMatrix(countData = t(data.frame(otu_table(variants))),
-                              colData = colData,
-                              design = ~ year)
-## Subset Mcav colonies
-dds <- dds[, colData(dds)$host_species == "cavernosa"]
-### Remove genes counted zero times in subset
-dds <- dds[ rowSums(counts(dds)) > 0, ]
-### Drop unused factor levels
-colData(dds) <- droplevels(colData(dds))
-# Remove genes with less than 1 mean count across samples
-dds <- dds[ rowMeans(counts(dds)) > 1, ]
-# Run DESeq pipeline
-design(dds) <- formula(~ host_id + year)
-dsr1 <- DESeq(dds)
-# Define contrasts of interest (differences between years)
-contr <- tibble(num = c("2018", "2019", "2019"),
-                den = c("2017", "2017", "2018"))
-# Get diff abund taxa for each contrast
-DA <- contr %>%
-  mutate(dsr = pmap(list(num, den), ~results(dsr1, contrast = c("year", ..1, ..2))))
-DA <- DA %>%
-  mutate(sig = map(dsr, ~ rownames_to_column(data.frame(.[which(.$padj < 0.1), ]), "gene"))) %>%
-  unnest(sig)
-# get variance stabilized counts for plotting
-vsd <- varianceStabilizingTransformation(dds)
-vsd2 <- limma::removeBatchEffect(assay(vsd), vsd$host_id)
-taxcounts <- data.frame(vsd2[which(rownames(vsd2) %in% DA$gene), ])
-taxcounts <- rownames_to_column(taxcounts, var = "variant") %>%
-  pivot_longer(-variant, names_to = "sample_name", values_to = "count") %>%
-  left_join(dplyr::select(data.frame(sample_data(variants)), "sample_name", "host_id", "year"))
-ggplot(taxcounts, aes(x = year, y = count, color = host_id, group = host_id)) +
-  facet_wrap(~variant) +
-  geom_point() +
-  geom_line()
 
-
-# natans
+# Use DESeq2 to test differences between years for different sets of colonies
 out <- deseqDA(host_ids = c(52, 45))#natans52+strigosa45 --> nothing sig
 out <- deseqDA(host_ids = c(33,60,12,5)) #natans33,60,12,5 --> nothing compelling
 out <- deseqDA(host_ids = c(46, 41, 44)) #siderea7/46,41,44 --> nothing compelling
 out <- deseqDA(host_ids = c(49,6,39))# cavernosa49,6,39 --> Bs and Cs sig
 out <- deseqDA(host_ids = c(80, 81, 40, 3)) #orbicella80,81,4,3 --> nothing compelling
-#orbicella80,81,40,3 --> nothing sig
-out <- deseqDA(host_ids = c(49, 58, 6, 34, 39, 55, 19, 25, 69, 70))
+out <- deseqDA(host_ids = c(49, 58, 6, 34, 39, 55, 19, 25, 69, 70))   # ALL CAVERNOSA B1/B19
+out
 ggplot(out, aes(x = year, y = count, color = host_id, group = host_id)) +
   facet_wrap(~variant) +
-  geom_point() +
-  geom_line()
+  geom_point()# +
+  #geom_line()
 
-
-# OK now try DESeq for another group of colonies
-colData = data.frame(sample_data(variants))
-colData$host_id <- factor(colData$host_id)
-dds <- DESeqDataSetFromMatrix(countData = t(data.frame(otu_table(variants))),
-                              colData = colData,
-                              design = ~ year)
-## Subset natans 33, 60, 12, 5
-dds <- dds[, colData(dds)$host_id %in% c(33, 60, 12, 5)]
-### Remove genes counted zero times in subset
-dds <- dds[ rowSums(counts(dds)) > 0, ]
-### Drop unused factor levels
-colData(dds) <- droplevels(colData(dds))
-# Remove genes with less than 1 mean count across samples
-dds <- dds[ rowMeans(counts(dds)) > 1, ]
-# Run DESeq pipeline
-design(dds) <- formula(~ host_id + year)
-dsr1 <- DESeq(dds)
-# Define contrasts of interest (differences between years)
-contr <- tibble(num = c("2018", "2019", "2019"),
-                den = c("2017", "2017", "2018"))
-# Get diff abund taxa for each contrast
-DA <- contr %>%
-  mutate(dsr = pmap(list(num, den), ~results(dsr1, contrast = c("year", ..1, ..2))))
-DA <- DA %>%
-  mutate(sig = map(dsr, ~ rownames_to_column(data.frame(.[which(.$padj < 0.1), ]), "gene"))) %>%
-  unnest(sig)
-# get variance stabilized counts for plotting
-vsd <- varianceStabilizingTransformation(dds)
-vsd2 <- limma::removeBatchEffect(assay(vsd), vsd$host_id)
-taxcounts <- data.frame(vsd2[which(rownames(vsd2) %in% DA$gene), ])
-taxcounts <- rownames_to_column(taxcounts, var = "variant") %>%
-  pivot_longer(-variant, names_to = "sample_name", values_to = "count") %>%
-  left_join(dplyr::select(data.frame(sample_data(variants)), "sample_name", "host_id", "year"))
-ggplot(taxcounts, aes(x = year, y = count, color = host_id, group = host_id)) +
-  facet_wrap(~variant) +
-  geom_point() +
-  geom_line()
-
-
-
-
-
-# OK now try DESeq for another group of colonies
-colData = data.frame(sample_data(variants))
-colData$host_id <- factor(colData$host_id)
-dds <- DESeqDataSetFromMatrix(countData = t(data.frame(otu_table(variants))),
-                              colData = colData,
-                              design = ~ year)
-## Subset siderea
-dds <- dds[, colData(dds)$host_id %in% c(41, 44, 46)]
-### Remove genes counted zero times in subset
-dds <- dds[ rowSums(counts(dds)) > 0, ]
-### Drop unused factor levels
-colData(dds) <- droplevels(colData(dds))
-# Remove genes with less than 1 mean count across samples
-dds <- dds[ rowMeans(counts(dds)) > 1, ]
-# Run DESeq pipeline
-design(dds) <- formula(~ host_id + year)
-dsr1 <- DESeq(dds)
-# Define contrasts of interest (differences between years)
-contr <- tibble(num = c("2018", "2019", "2019"),
-                den = c("2017", "2017", "2018"))
-# Get diff abund taxa for each contrast
-DA <- contr %>%
-  mutate(dsr = pmap(list(num, den), ~results(dsr1, contrast = c("year", ..1, ..2))))
-DA <- DA %>%
-  mutate(sig = map(dsr, ~ rownames_to_column(data.frame(.[which(.$padj < 0.1), ]), "gene"))) %>%
-  unnest(sig)
-# get variance stabilized counts for plotting
-vsd <- varianceStabilizingTransformation(dds)
-vsd2 <- limma::removeBatchEffect(assay(vsd), vsd$host_id)
-taxcounts <- data.frame(vsd2[which(rownames(vsd2) %in% DA$gene), ])
-taxcounts <- rownames_to_column(taxcounts, var = "variant") %>%
-  pivot_longer(-variant, names_to = "sample_name", values_to = "count") %>%
-  left_join(dplyr::select(data.frame(sample_data(variants)), "sample_name", "host_id", "year"))
-ggplot(taxcounts, aes(x = year, y = count, color = host_id, group = host_id)) +
-  facet_wrap(~variant) +
-  geom_point() +
-  geom_line()
+#DESeq2 also identifies B1 and B19 in Mcavernosa going up then down again. Also a couple C seqs do same.
 ```
 
 
 
 # 3. Ecological data from Pete
 ```{r}
-ecodat <- readxl::read_xls("Data/For_Cunning_Lenz_paper copy.xls") %>%
+# genus level dataset
+ecodat <- readxl::read_xls("Data/STJ_corals_genus.xls") %>%
   clean_names()
 
 ecomd <- ecodat %>% select(1:5)
@@ -749,6 +644,27 @@ as_tibble(emmeans(mod, specs = c("year", "tax"))) %>%
   geom_point() +
   geom_line()
   
+# species level dataset
+coralspp <- readxl::read_xls("Data/STJ_corals_species.xls", skip = 2) %>%
+  clean_names()
+
+sppmd <- coralspp %>% select(1:5)
+sppcomp <- coralspp %>% select(9:ncol(coralspp))
+
+spplong <- coralspp %>%
+  pivot_longer(cols = 6:ncol(coralspp), names_to = "tax")
+
+mod <- lmer(log(value+0.001) ~ tax * factor(year) + (1|quadrat/site), data = spplong)
+car::Anova(mod)
+
+as_tibble(emmeans(mod, specs = c("year", "tax"))) %>%
+  filter(tax %in% c("percent_orbicella_annularis", "percent_orbicella_faveolata",
+                    "diploria_labrynthiformes", "percent_orbicealla_franksi",
+                    "percent_montastraea_cavernosa", "percent_pseudodiploria_strigosa", 
+                    "percent_colpophyllia_natans", "percent_sidreastrea_siderea")) %>%
+  ggplot(aes(x = year, y = emmean, color = tax, group = tax)) +
+  geom_point() +
+  geom_line()
 ```
 
 
