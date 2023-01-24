@@ -316,15 +316,22 @@ hist(log10(sample_sums(variants)))
 ```{r}
 # Algal genotypes --- whole dataset summary figure
 
-#Not enough colors for all variants
-
-
+## Transform to relative abundance
 v <- transform_sample_counts(variants, function(x) x/sum(x))     # Relative abundance
 p <- transform_sample_counts(profiles, function(x) x/sum(x))     # Relative abundance
 
+## Filter out variants less than 0.1% relative abundance for plotting
 vt <- transform_sample_counts(v, function(x) ifelse(x > 0.001, x, 0))
 vt <- prune_taxa(taxa_sums(vt) != 0, vt)
 
+### Arrange colonies by similarity within species
+mp <- merge_samples(vt, "host_id")
+hc <- hclust(dist(data.frame(otu_table(mp))))
+str(hc)
+neword <- tibble(host_id = as.character(sample_data(mp)$host_id), ord = hc$order)
+
+
+## Set colors for plotting variants, with distinct palettes by clade/genus
 tt <- as_tibble(data.frame(tax_table(vt))) %>%
   arrange(clade, DIV)
 nt <- tt %>% count(clade) %>% pivot_wider(names_from = clade, values_from = n)
@@ -336,53 +343,82 @@ set.seed(556)
 vpal <- c(acols[shuffle(acols)], bcols[shuffle(bcols)], ccols[shuffle(ccols)], dcols[shuffle(dcols)])
 vpal <- setNames(vpal, tt$DIV)
 
-#allcolors <- grDevices::colors()
-#set.seed(898)
-#vpal <- sample(allcolors, ntaxa(vt))
-#vpal <- hue_pal(l = 65)(ntaxa(variants))
-#vpal <- setNames(vpal, taxa_names(vt))
-
+# Order data for plotting
 divord <- as_tibble(data.frame(tax_table(vt))) %>%
   arrange(clade, DIV) %>%
   mutate(DIV = as_factor(DIV))
+
   
 vmdf <- psmelt(vt) %>%
-  arrange(host_genus, host_species, host_id, year, clade, DIV) %>%
-  mutate(sample_id = as_factor(paste(host_genus, host_species, host_id, year, sep = "_")),
+  left_join(neword) %>%
+  arrange(host_genus, host_species, ord, year, clade, DIV) %>%
+  mutate(sample_id = as_factor(paste(host_genus, host_species, ord, year, sep = "_")),
+         genus_species = as_factor(paste(str_sub(host_genus, 1, 1), ". ", host_species, sep = "")),
          DIV = factor(DIV, levels = divord$DIV))
-  
+
+# Plot variants
 g1 <- ggplot(vmdf, aes(x = sample_id, y = Abundance, fill = DIV, label = DIV)) + 
   geom_col(width = 1) + 
-  facet_nested(~ host_species + host_id, scales = "free_x", space = "free_x") +
+  facet_nested(~ genus_species + ord, 
+               scales = "free_x", space = "free_x",
+               nest_line = element_line(linetype = 1)) +
   scale_x_discrete(expand = c(0, 0)) +
   scale_y_continuous(expand = c(0, 0), labels = scales::percent) +
   ylab("ITS2 sequences") +
   scale_fill_manual(values = vpal[vmdf$OTU]) +
   theme(legend.position = "none", panel.background = element_blank(), 
-        axis.title.x = element_blank(), axis.text.x = element_blank(),
-        panel.spacing = unit(0, "mm"))
+        text = element_text(size = 7), plot.margin = margin(5.5, 5.5, 1, 5.5),
+        axis.title.x = element_blank(), axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        panel.spacing = unit(0.25, "mm"),
+        strip.background = element_blank(),
+        strip.text.x = element_text(face = "italic"))
 g1
 
+# Repeat for profiles
+pp <- as_tibble(data.frame(tax_table(p))) %>%
+  arrange(clade, its2_type_profile)
+np <- pp %>% count(clade) %>% pivot_wider(names_from = clade, values_from = n)
+acols <- tail(brewer.pal(5, "Greys"), np$A)
+bcols <- colorRampPalette(brewer.pal(9, "YlGn"))(np$B)
+ccols <- colorRampPalette(brewer.pal(9, "PuBu"))(np$C)
+dcols <- tail(brewer.pal(9, "Reds"), np$D)
+set.seed(556)
+ppal <- c(acols, bcols, ccols, dcols)
+ppal <- setNames(ppal, pp$its2_type_profile)
 
+proford <- as_tibble(data.frame(tax_table(p))) %>%
+  arrange(clade, its2_type_profile) %>%
+  mutate(its2_type_profile = as_factor(its2_type_profile))
   
+pmdf <- psmelt(p) %>%
+  left_join(neword) %>%
+  arrange(host_genus, host_species, ord, year, clade, its2_type_profile) %>%
+  mutate(sample_id = as_factor(paste(host_genus, host_species, ord, year, sep = "_")),
+         genus_species = as_factor(paste(str_sub(host_genus, 1, 1), ". ", host_species, sep = ""))) %>%
+  filter(Abundance > 0.01)
   
-  pmdf <- psmelt(p)
-  p_plot <- ggplot(pmdf, aes(x = year, y = Abundance, fill = its2_type_profile, label = its2_type_profile)) +
-    geom_bar(stat = "identity", position = "fill") +
-    facet_wrap(~ host_site + host_id, nrow = 1) +
+g2 <- ggplot(pmdf, aes(x = year, y = Abundance)) +
+    geom_col(width = 1, aes(fill = its2_type_profile)) +
+    facet_nested(~ genus_species + ord, scales = "free_x", space = "free_x") +
     scale_x_discrete(expand = c(0, 0)) +
-    scale_y_continuous(expand = expansion(mult = c(0, .1)), labels = scales::percent) +
+    scale_y_continuous(expand = c(0, 0)) +
     ylab("Profiles") +
-    scale_fill_manual(values = ppal[pmdf$its2_type_profile]) +
-    # geom_label_repel(position = position_fill(vjust = 0.5), force = 2,
-    #                  point.size = NA, xlim = c(-0.1, 3.6), ylim = c(0.1,0.9), size = 2) +
-    theme(legend.position = "bottom", panel.background = element_blank(), 
-          axis.title.x = element_blank(), axis.text.x = element_text(angle = 90),
-          axis.text.y = element_blank(), axis.ticks.y = element_blank(),
-          strip.background = element_blank(), strip.text.x = element_blank())# +
-    #guides(fill = guide_legend(nrow = 4)) # +
-    #coord_cartesian(clip = "off")
-  plot_grid(v_plot, p_plot, nrow = 2, label_fontface = "plain")
+    scale_fill_manual(values = ppal[pmdf$its2_type_profile], limits = force, drop = TRUE) +
+    theme(legend.position = "bottom", legend.key.size = unit(2, "mm"), legend.title = element_blank(),
+          legend.margin = margin(1, 0, 0, 0), legend.box.margin = margin(-10, -10, -10, -10),
+          plot.margin = margin(0, 5.5, 5.5, 5.5),
+          text = element_text(size = 7), legend.text = element_text(size = 4),
+          panel.background = element_blank(), strip.text.x = element_blank(),
+          axis.title.x = element_blank(), axis.text = element_blank(),
+          axis.ticks = element_blank(),
+          strip.background = element_blank(),
+          panel.spacing = unit(0.25, "mm")) +
+    guides(fill = guide_legend(ncol = 5))
+
+fig1 <- plot_grid(g1, g2, nrow = 2, label_fontface = "plain", rel_heights = c(0.6, 0.4))
+fig1
+ggsave(fig1, filename = "Output/Figure1.png", width = 183, height = 60, units = "mm")
 ```
 
 ```{r}
