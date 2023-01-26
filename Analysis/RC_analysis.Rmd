@@ -453,6 +453,12 @@ filter(pmdf, host_species == "furcata")
 # variants <- prune_taxa(taxa_sums(variants) != 0, variants)
 # profiles <- subset_samples(profiles, host_species != "furcata")
 # profiles <- prune_taxa(taxa_sums(profiles) != 0, profiles)
+
+
+variants <- subset_samples(variants, !host_id %in% c("51", "59"))
+variants <- prune_taxa(taxa_sums(variants) != 0, variants)
+profiles <- subset_samples(profiles, !host_id %in% c("51", "59"))
+profiles <- prune_taxa(taxa_sums(profiles) != 0, profiles)
 ```
 
 
@@ -517,6 +523,7 @@ ord18
 res <- as_tibble(emm) %>%
   filter(period %in% c("2017-2018", "2017-2019")) %>%
   full_join(tibble(period = "2017", distinct(varrdf, host_species), response = 0)) %>%
+  filter(host_species != "furcata") %>%
   mutate(host_species = factor(host_species, levels = c("cavernosa", "siderea", "annularis", "natans",
                                                         "labrynthiformis", "franksi", "faveolata", "strigosa")))
 
@@ -554,7 +561,7 @@ distmat
 test <- reshape2::melt(matrix(distmat))[reshape2::melt(upper.tri(distmat))$value,]
 distmat
 
-remotes::install_github("DanielSprockett/reltools")
+#remotes::install_github("DanielSprockett/reltools")
 library(reltools)
 test <- make_distance_df(ps = varr, distances = "bray", force_distance_calculations = FALSE, intragroup_only = TRUE,
   variables = "host_id")
@@ -574,40 +581,69 @@ ggplot(sc2, aes(x = host_species, y = bray)) +
 
 # Plot B-C dist change over time by species
 sc3 <- sc2 %>%
-  distinct(sample1, sample2, bray) %>%
+  distinct(sample1, sample2, host_species, bray) %>%
   separate(sample1, into = c("site1", "species1", "host_id1", "year1")) %>%
   separate(sample2, into = c("site2", "species2", "host_id2", "year2"))
 
 arrange(sc3, host_id1, year1)
 
-ggplot(sc3, aes())
-
 
 sc4 <- as_tibble(sc3) %>%
   mutate(yearx = if_else(year1 < year2, year1, year2),
          yeary = if_else(year1 < year2, year2, year1)) %>%
-  select(host_id = host_id1, host_species = species1,
+  select(host_id = host_id1, host_species,
          year1 = yearx, year2 = yeary, bray) %>%
   filter(year1 == 2017)
 
-ggplot(sc4, aes(x = year2, y = bray, color = host_species)) +
-  geom_boxplot()
+# ggplot(sc4, aes(x = year2, y = bray, color = host_species)) +
+#   geom_boxplot()
 
-res2 <- expand_grid(year2 = c("2017", "2018", "2019"),
-            host_species = distinct(sc4, host_species)[[1]],
-            bray = 0) %>%
-  bind_rows(sc4) %>%
-  filter(!host_id %in% c("51", "59")) %>%
-  group_by(host_species, year2) %>%
-  summarize(meanb = mean(bray))
+mod <- lmer(bray ~ year2 * host_species + (1|host_id), data = sc4)
+hist(residuals(mod))
+car::Anova(mod)
+emm <- emmeans(mod, specs = c("year2", "host_species"), type = "response")
+contrast(emm, by = "host_species")
+
+
+res2 <- as_tibble(emm) %>%
+  full_join(tibble(year2 = "2017", distinct(varrdf, host_species), emmean = 0)) %>%
+  filter(host_species != "furcata") %>%
+  mutate(host_species = factor(host_species, levels = c("cavernosa", "siderea", "annularis", "natans",
+                                                        "labrynthiformis", "franksi", "faveolata", "strigosa")))
+
   
 
 res2 %>%
-  ggplot(aes(x = year2, y = meanb, color = host_species, group = host_species)) + 
+  ggplot(aes(x = year2, y = emmean, color = host_species, group = host_species)) + 
   geom_point(position = position_dodge(width = 0.3)) +
-  # geom_errorbar(aes(ymin = response - SE, ymax = response + SE), position = position_dodge(width = 0.3), width = 0.1) +
+  geom_errorbar(aes(ymin = emmean - SE, ymax = emmean + SE), position = position_dodge(width = 0.3), width = 0.1) +
   geom_line(position = position_dodge(width = 0.3)) +
   theme_custom()
+
+```
+
+# Some way of comparing within-colony differences to between-colony differences, to show that there's much more variability among colonies
+
+```{r}
+varr <- transform_sample_counts(variants, function(x) sqrt(x/sum(x)))     # Square-root transform
+
+bd <- as.matrix(distance(varr, "bray"))
+xy <- t(combn(colnames(bd), 2))
+bd2 <- as_tibble(data.frame(xy, dist=bd[xy])) %>%
+  separate(X1, into = c("site1", "species1", "host_id1", "year1")) %>%
+  separate(X2, into = c("site2", "species2", "host_id2", "year2")) %>%
+  filter(species1 == species2) %>%
+  mutate(same_host_id = host_id1 == host_id2)
+  
+
+ggplot(bd2, aes(x = same_host_id, y = dist)) +
+  facet_wrap(~ species1) +
+  geom_violin() +
+  geom_point()
+
+test2 %>%
+  filter(s1_host_species == "siderea") %>%
+  arrange(-bray)
 ```
 
 
