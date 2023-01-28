@@ -606,8 +606,12 @@ xy <- t(combn(colnames(bd), 2))
 bd2 <- as_tibble(data.frame(xy, dist=bd[xy])) %>%
   separate(X1, into = c("site1", "species1", "host_id1", "year1")) %>%
   separate(X2, into = c("site2", "species2", "host_id2", "year2")) %>%
-  filter(species1 == species2) %>%
-  mutate(group = case_when(host_id1 == host_id2 ~ "within", TRUE ~ "between"))
+  filter(species1 == species2) %>%    # only interested in within-species differences
+  mutate(group = case_when(host_id1 == host_id2 ~ "within", TRUE ~ "between")) %>%
+  filter(group == "within" |
+         group == "between" & year1 == year2)
+
+
 
 #order species by highest median between-colony difference
 brayord <- bd2 %>%
