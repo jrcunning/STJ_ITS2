@@ -22,6 +22,7 @@ library(lme4)
 library(emmeans)
 library(tidyverse)
 library(vegan)
+library(ggh4x)
 
 # library(conflicted)
 # conflict_prefer("select", "dplyr")
@@ -234,6 +235,26 @@ scale_color_corals <- function(aesthetic, ...){
         ...
     )
 }
+
+sppord <- factor(levels = c("Cnat", "Dlab", "Pstr", "Pfur",
+                            "Ssid", "Oann", "Ofav", "Ofra", "Mcav"))
+
+## ggplot labeller
+sppnames <- c(
+  Cnat = "C. natans",
+  Dlab = "D. labyrinthiformis",
+  Pstr = "P. strigosa",
+  Pfur = "P. furcata",
+  Ssid = "S. siderea",
+  Oann = "O. annularis",
+  Ofav = "O. faveolata",
+  Ofra = "O. franksi",
+  Mcav = "M. cavernosa"
+)
+
+global_labeller <- labeller(
+  gspp = sppnames
+)
 ```
 
 ```{r DAtesting_function}
@@ -357,14 +378,17 @@ vmdf <- psmelt(vt) %>%
   mutate(host_id = as_factor(host_id),
          sample_id = as_factor(paste(host_genus, host_species, host_id, year, sep = "_")),
          genus_species = as_factor(paste(str_sub(host_genus, 1, 1), ". ", host_species, sep = "")),
+         gspp = factor(paste0(str_sub(host_genus, 1, 1), str_sub(host_species, 1, 3)),
+                       levels = levels(sppord)),
          DIV = factor(DIV, levels = divord$DIV))
 
 # Plot variants
 g1 <- ggplot(vmdf, aes(x = sample_id, y = Abundance, fill = DIV, label = DIV)) + 
   geom_col(width = 1) + 
-  facet_nested(~ genus_species + host_id, 
+  facet_nested(~ gspp + host_id, labeller = global_labeller,
                scales = "free_x", space = "free_x",
-               nest_line = element_line(linetype = 1)) +
+               nest_line = element_line(linetype = 1),
+               remove_labels = "x") +
   scale_x_discrete(expand = c(0, 0)) +
   scale_y_continuous(expand = c(0, 0), labels = scales::percent) +
   ylab("ITS2 sequences") +
@@ -376,7 +400,7 @@ g1 <- ggplot(vmdf, aes(x = sample_id, y = Abundance, fill = DIV, label = DIV)) +
         panel.spacing = unit(0.25, "mm"),
         strip.background = element_blank(),
         strip.text.x = element_text(face = "italic"))
-g1
+
 
 # Repeat for profiles
 pp <- as_tibble(data.frame(tax_table(p))) %>%
@@ -399,12 +423,14 @@ pmdf <- psmelt(p) %>%
   arrange(host_genus, host_species, ord, year, clade, its2_type_profile) %>%
   mutate(host_id = as_factor(host_id),
          sample_id = as_factor(paste(host_genus, host_species, host_id, year, sep = "_")),
-         genus_species = as_factor(paste(str_sub(host_genus, 1, 1), ". ", host_species, sep = ""))) %>%
+         genus_species = as_factor(paste(str_sub(host_genus, 1, 1), ". ", host_species, sep = "")),
+         gspp = factor(paste0(str_sub(host_genus, 1, 1), str_sub(host_species, 1, 3)),
+                       levels = levels(sppord))) %>%
   filter(Abundance > 0.01)
   
 g2 <- ggplot(pmdf, aes(x = year, y = Abundance)) +
     geom_col(width = 1, aes(fill = its2_type_profile)) +
-    facet_nested(~ genus_species + host_id, scales = "free_x", space = "free_x") +
+    facet_nested(~ gspp + host_id, scales = "free_x", space = "free_x") +
     scale_x_discrete(expand = c(0, 0)) +
     scale_y_continuous(expand = c(0, 0)) +
     ylab("Profiles") +
@@ -421,12 +447,13 @@ g2 <- ggplot(pmdf, aes(x = year, y = Abundance)) +
     guides(fill = guide_legend(ncol = 5))
 
 fig1 <- plot_grid(g1, g2, nrow = 2, label_fontface = "plain", rel_heights = c(0.6, 0.4))
-fig1
+
 ggsave(fig1, filename = "Output/Figure1.png", width = 183, height = 60, units = "mm")
 ```
 
 # More QC... filter out sketchy samples?
-```{r}
+```{r, include = FALSE, eval = FALSE}
+vmdf %>% filter(DIV == "B14")
 # Colony 17 (O. franksi)
 filter(pmdf, host_id == "17")
 ### 2017: 93% C7/C7d/C12c-C12b-C12e-C7h-C3-C7g (found in other Orb) + 6% B1-B1x-B1t-B14b-B1af-B1ae-B1ag (found in Ofra, Ofav, Mcav, Pstr, Ssid)
@@ -436,6 +463,9 @@ filter(pmdf, host_id == "17")
 filter(pmdf, host_id == "59")
 ### 2017: 'Pfur': 100% C7/C7d/C12c-C12b-C12e-C7h-C3-C7g  (found in other Orbicellas) -- this must be an Orbicella sample?
 ### 2019: 'Ofra': 99.6% B19/B5af-B19e-B19c-B5ag-B19d-B19f-B40a-B19h    (mostly found in Cnat + 1 Mcav) -- what is this?!?
+# change 2017 colony 59 from Pfur to Ofra
+sample_data(variants)[sample_data(variants)$host_id == "59" & sample_data(variants)$year == "2017", "host_species"] <- "franksi"
+sample_data(profiles)[sample_data(profiles)$host_id == "59" & sample_data(profiles)$year == "2017", "host_species"] <- "franksi"
 
 # Colony 51 (S. siderea)
 filter(pmdf, host_id == "51")
@@ -455,170 +485,59 @@ filter(pmdf, host_species == "furcata")
 # profiles <- prune_taxa(taxa_sums(profiles) != 0, profiles)
 
 
-variants <- subset_samples(variants, !host_id %in% c("51", "59"))
-variants <- prune_taxa(taxa_sums(variants) != 0, variants)
-profiles <- subset_samples(profiles, !host_id %in% c("51", "59"))
-profiles <- prune_taxa(taxa_sums(profiles) != 0, profiles)
+#variants <- subset_samples(variants, !host_id %in% c("51", "59"))
+#variants <- prune_taxa(taxa_sums(variants) != 0, variants)
+#profiles <- subset_samples(profiles, !host_id %in% c("51", "59"))
+#profiles <- prune_taxa(taxa_sums(profiles) != 0, profiles)
 ```
 
 
 # How dynamic are coral symbiont communities within individual colonies? (change over time)
-
-# PCoA version
+### Bray-Curtis diffs within colonies over time
 ```{r}
-varr <- transform_sample_counts(variants, function(x) sqrt(x/sum(x)))     # Square-root transform
-
-# Bray-Curtis distance matrix
-distmat <- vegan::vegdist(otu_table(varr), method = "bray")
-
-# Principal Coordinates Analysis
-varrdf <- as.data.frame(cmdscale(distmat, k = nsamples(varr) - 1)) %>%      # Specify k dimensions   #####
-  mutate(sample_name = rownames(.)) %>%
-  left_join(sample_data(varr)) %>%
-  as_tibble() %>%
-  select(starts_with("V"), host_species, host_id, year, host_site, collection_depth) %>%
-  arrange(host_id, year)
-
-# Calculate distance moved (in ordination space) from year to year for each colony 
-dists <- varrdf %>%
-  group_by(host_id) %>%
-  #filter(n() == 3) %>%
-  nest(data = c(year, starts_with("V"))) %>%
-  mutate(years = map(data, ~.[,1]),
-         points = map(data, ~.[,-1])) %>%
-  mutate(d = map(points, dist),
-         pd = map(d, broom::tidy)) %>%
-  unnest(pd) %>%
-  mutate(y1 = map2_chr(item1, years, ~case_when(.x == 1 ~ .y[[1]][1],
-                                                .x == 2 ~ .y[[1]][2])),
-         y2 = map2_chr(item2, years, ~case_when(.x == 2 ~ .y[[1]][2],
-                                                .x == 3 ~ .y[[1]][3]))) %>%
-  select(host_id, host_species, host_site, y1, y2, distance) %>%
-  rowwise() %>%
-  mutate(period = paste(y1, y2, sep = "-"))
-
-# Plot movement by species
-dists %>%
-  mutate(gap = as.numeric(y2) - as.numeric(y1)) %>%
-  filter(gap == min(gap)) %>%                         # selects 1-year gaps only for cols sampled 3x
-  ggplot(aes(x = host_species, y = distance)) +
-  geom_violin() +
-  geom_point(aes(color = host_site))
-
-# Plot movement by year / species
-ggplot(dists, aes(x = interaction(y1,y2), y = distance, color = host_species)) +
-  geom_point()
-
-
-mod <- lmer(log(distance) ~ period * host_species + (1|host_id), data = filter(dists, period %in% c("2017-2018", "2017-2019")))
-hist(residuals(mod))
-car::Anova(mod)
-emm <- emmeans(mod, specs = c("period", "host_species"), type = "response")
-contrast(emm, by = "host_species")
-
-# Get model means and combine with zeros as baseline
-ord18 <- as_tibble(emm) %>% filter(period == "2017-2018") %>% arrange(-response)
-ord18
-
-res <- as_tibble(emm) %>%
-  filter(period %in% c("2017-2018", "2017-2019")) %>%
-  full_join(tibble(period = "2017", distinct(varrdf, host_species), response = 0)) %>%
-  filter(host_species != "furcata") %>%
-  mutate(host_species = factor(host_species, levels = c("cavernosa", "siderea", "annularis", "natans",
-                                                        "labrynthiformis", "franksi", "faveolata", "strigosa")))
-
-# Plot
-res %>%
-  ggplot(aes(x = period, y = response, color = host_species, group = host_species)) + 
-  geom_point(position = position_dodge(width = 0.3)) +
-  geom_errorbar(aes(ymin = response - SE, ymax = response + SE), position = position_dodge(width = 0.3), width = 0.1) +
-  geom_line(position = position_dodge(width = 0.3)) +
-  theme_custom()
-
-# Visualize NMDS movement?
-# varr.mv <- subset_samples(varr, host_species %in% c("cavernosa", "siderea", "annularis"))
-# mv.ord <- ordinate(varr.mv, "NMDS", "bray")
-# mv.ord.s <- plot_ordination(varr.mv, mv.ord, type="samples")
-# mv.ord.s2 <- mv.ord.s$data %>% arrange(host_id, year)
-# ggplot(mv.ord.s2, aes(x = NMDS1, y = NMDS2, color = host_species, group = host_id)) +
-#   geom_point(aes(shape = year)) +
-#   geom_path(aes(group = host_id), arrow = arrow(length = unit(0.1, "inches"), type = "open"))
-# 
-# ggplot(mv.ord.s2, aes(x = NMDS1, y = NMDS2, color = host_species, shape = year)) +
-#   geom_point() +
-#   stat_ellipse()
-```
-
-# Bray version
-```{r}
-
 # How does B-C dissim change from 2017--2018--2019?
 varr <- transform_sample_counts(variants, function(x) sqrt(x/sum(x)))     # Square-root transform
 
 # Bray-Curtis distance matrix
-distmat <- vegan::vegdist(otu_table(varr), method = "bray")
-distmat
-test <- reshape2::melt(matrix(distmat))[reshape2::melt(upper.tri(distmat))$value,]
-distmat
+bd <- as.matrix(distance(varr, "bray"))
+xy <- t(combn(colnames(bd), 2))
+sc <- as_tibble(data.frame(xy, dist=bd[xy])) %>%
+  separate(X1, into = c("site1", "species1", "host_id1", "year1")) %>%
+  separate(X2, into = c("site2", "species2", "host_id2", "year2")) %>%
+  filter(host_id1 == host_id2)
 
-#remotes::install_github("DanielSprockett/reltools")
-library(reltools)
-test <- make_distance_df(ps = varr, distances = "bray", force_distance_calculations = FALSE, intragroup_only = TRUE,
-  variables = "host_id")
-sc <- filter(test, same_host_id == "yes")
-
-sc2 <- sc %>%
-  mutate(host_id = s1_host_id) %>%
-  left_join(sam)
-
-filter(sc2, host_species == "furcata")
-
-
-
-ggplot(sc2, aes(x = host_species, y = bray)) + 
-  geom_violin() +
-  geom_point()
-
-# Plot B-C dist change over time by species
-sc3 <- sc2 %>%
-  distinct(sample1, sample2, host_species, bray) %>%
-  separate(sample1, into = c("site1", "species1", "host_id1", "year1")) %>%
-  separate(sample2, into = c("site2", "species2", "host_id2", "year2"))
-
-arrange(sc3, host_id1, year1)
-
-
-sc4 <- as_tibble(sc3) %>%
+sc4 <- sc %>%
   mutate(yearx = if_else(year1 < year2, year1, year2),
          yeary = if_else(year1 < year2, year2, year1)) %>%
-  select(host_id = host_id1, host_species,
-         year1 = yearx, year2 = yeary, bray) %>%
+  select(host_id = host_id1, host_species = species1,
+         year1 = yearx, year2 = yeary, dist) %>%
   filter(year1 == 2017)
 
-# ggplot(sc4, aes(x = year2, y = bray, color = host_species)) +
-#   geom_boxplot()
+ggplot(sc4, aes(x = year2, y = dist, fill = host_species)) +
+  facet_wrap(~ host_species, nrow = 1) +
+  geom_boxplot()
 
-mod <- lmer(bray ~ year2 * host_species + (1|host_id), data = sc4)
+mod <- lmer(log(dist) ~ year2 * host_species + (1|host_id), 
+            data = filter(sc4, host_species != "Pfur"))
 hist(residuals(mod))
+shapiro.test(residuals(mod))
 car::Anova(mod)
 emm <- emmeans(mod, specs = c("year2", "host_species"), type = "response")
-contrast(emm, by = "host_species")
+contrast(emm, "pairwise", by = "host_species")
 
 
-res2 <- as_tibble(emm) %>%
-  full_join(tibble(year2 = "2017", distinct(varrdf, host_species), emmean = 0)) %>%
-  filter(host_species != "furcata") %>%
-  mutate(host_species = factor(host_species, levels = c("cavernosa", "siderea", "annularis", "natans",
-                                                        "labrynthiformis", "franksi", "faveolata", "strigosa")))
-
-  
-
-res2 %>%
+as_tibble(emm) %>%
+  mutate(emmean = response) %>%
+  full_join(tibble(year2 = "2017", distinct(sc4, host_species), emmean = 0)) %>%
+  mutate(host_species = factor(host_species, levels = c("Mcav", "Ssid", "Oann",
+                                                        "Dlab", "Ofra", "Cnat",
+                                                        "Pstr", "Pfur", "Ofav"))) %>%
   ggplot(aes(x = year2, y = emmean, color = host_species, group = host_species)) + 
   geom_point(position = position_dodge(width = 0.3)) +
-  geom_errorbar(aes(ymin = emmean - SE, ymax = emmean + SE), position = position_dodge(width = 0.3), width = 0.1) +
-  geom_line(position = position_dodge(width = 0.3)) +
-  theme_custom()
+  geom_errorbar(aes(ymin = emmean - SE, ymax = emmean + SE), 
+                position = position_dodge(width = 0.3), width = 0.1) +
+  geom_line(position = position_dodge(width = 0.3)) #+
+  #theme_custom()
 
 ```
 
@@ -626,6 +545,7 @@ res2 %>%
 
 ```{r}
 varr <- transform_sample_counts(variants, function(x) sqrt(x/sum(x)))    # Square-root transform
+#sample_data(varr)[sample_data(varr)$host_id == "59"]
 
 bd <- as.matrix(distance(varr, "bray"))
 xy <- t(combn(colnames(bd), 2))
@@ -644,10 +564,11 @@ brayord <- bd2 %>%
   mutate(species1 = as_factor(species1))
   
 source("https://raw.githubusercontent.com/datavizpyr/data/master/half_flat_violinplot.R")
-bd2 %>% mutate(species1 = factor(species1, levels = levels(hi$species1))) %>%
+bd2 %>% mutate(species1 = factor(species1, levels = levels(brayord$species1))) %>%
   ggplot(aes(x = group, y = dist)) +
-    facet_wrap(~ species1, nrow = 1) +
-    geom_boxplot(width = 0.1, outlier.shape = NA, position = position_nudge(x = -0.2), lwd = 0.2) +
+    facet_grid(~ species1) +
+    geom_boxplot(width = 0.1, outlier.shape = NA, lwd = 0.2,
+                 position = position_nudge(x = -0.2)) +
     geom_flat_violin(adjust = 1, position = position_nudge(x = 0.15), scale = "width",
                      lwd = 0, fill = "grey72") +
     geom_jitter(width = 0.05, alpha = 0.2, stroke = 0) +
@@ -1330,3 +1251,77 @@ ggplot(out, aes(x = year, y = count, color = host_id, group = host_id)) +
 #DESeq2 also identifies B1 and B19 in Mcavernosa going up then down again. Also a couple C seqs do same.
 ```
 
+
+
+# PCoA version
+```{r}
+varr <- transform_sample_counts(variants, function(x) sqrt(x/sum(x)))     # Square-root transform
+
+# Bray-Curtis distance matrix
+distmat <- vegan::vegdist(otu_table(varr), method = "bray")
+
+# Principal Coordinates Analysis
+varrdf <- as.data.frame(cmdscale(distmat, k = nsamples(varr) - 1)) %>%      # Specify k dimensions   #####
+  mutate(sample_name = rownames(.)) %>%
+  left_join(sample_data(varr)) %>%
+  as_tibble() %>%
+  select(starts_with("V"), host_species, host_id, year, host_site, collection_depth) %>%
+  arrange(host_id, year)
+
+# Calculate distance moved (in ordination space) from year to year for each colony 
+dists <- varrdf %>%
+  group_by(host_id) %>%
+  #filter(n() == 3) %>%
+  nest(data = c(year, starts_with("V"))) %>%
+  mutate(years = map(data, ~.[,1]),
+         points = map(data, ~.[,-1])) %>%
+  mutate(d = map(points, dist),
+         pd = map(d, broom::tidy)) %>%
+  unnest(pd) %>%
+  mutate(y1 = map2_chr(item1, years, ~case_when(.x == 1 ~ .y[[1]][1],
+                                                .x == 2 ~ .y[[1]][2])),
+         y2 = map2_chr(item2, years, ~case_when(.x == 2 ~ .y[[1]][2],
+                                                .x == 3 ~ .y[[1]][3]))) %>%
+  select(host_id, host_species, host_site, y1, y2, distance) %>%
+  rowwise() %>%
+  mutate(period = paste(y1, y2, sep = "-"))
+
+# Plot movement by species
+dists %>%
+  mutate(gap = as.numeric(y2) - as.numeric(y1)) %>%
+  filter(gap == min(gap)) %>%                         # selects 1-year gaps only for cols sampled 3x
+  ggplot(aes(x = host_species, y = distance)) +
+  geom_violin() +
+  geom_point(aes(color = host_site))
+
+# Plot movement by year / species
+ggplot(dists, aes(x = interaction(y1,y2), y = distance, color = host_species)) +
+  geom_point()
+
+
+mod <- lmer(log(distance) ~ period * host_species + (1|host_id), data = filter(dists, period %in% c("2017-2018", "2017-2019")))
+hist(residuals(mod))
+car::Anova(mod)
+emm <- emmeans(mod, specs = c("period", "host_species"), type = "response")
+contrast(emm, by = "host_species")
+
+# Get model means and combine with zeros as baseline
+ord18 <- as_tibble(emm) %>% filter(period == "2017-2018") %>% arrange(-response)
+ord18
+
+res <- as_tibble(emm) %>%
+  filter(period %in% c("2017-2018", "2017-2019")) %>%
+  full_join(tibble(period = "2017", distinct(varrdf, host_species), response = 0)) %>%
+  filter(host_species != "furcata") %>%
+  mutate(host_species = factor(host_species, levels = c("cavernosa", "siderea", "annularis", "natans",
+                                                        "labrynthiformis", "franksi", "faveolata", "strigosa")))
+
+# Plot
+res %>%
+  ggplot(aes(x = period, y = response, color = host_species, group = host_species)) + 
+  geom_point(position = position_dodge(width = 0.3)) +
+  geom_errorbar(aes(ymin = response - SE, ymax = response + SE), position = position_dodge(width = 0.3), width = 0.1) +
+  geom_line(position = position_dodge(width = 0.3)) +
+  theme_custom()
+
+```
