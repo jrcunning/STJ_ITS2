@@ -252,8 +252,15 @@ sppnames <- c(
   Mcav = "M. cavernosa"
 )
 
+sitenames <- c(
+  EastTektite = "ET",
+  WhitePoint = "WP",
+  CabritteHorn = "CH"
+)
+
 global_labeller <- labeller(
-  gspp = sppnames
+  gspp = sppnames,
+  host_site = sitenames
 )
 ```
 
@@ -350,7 +357,6 @@ vt <- prune_taxa(taxa_sums(vt) != 0, vt)
 ### Arrange colonies by similarity within species
 mp <- merge_samples(vt, "host_id")
 hc <- hclust(dist(data.frame(otu_table(mp))))
-str(hc)
 neword <- tibble(host_id = as.character(sample_data(mp)$host_id), ord = hc$order)
 
 
@@ -374,7 +380,7 @@ divord <- as_tibble(data.frame(tax_table(vt))) %>%
   
 vmdf <- psmelt(vt) %>%
   left_join(neword) %>%
-  arrange(host_genus, host_species, ord, year, clade, DIV) %>%
+  arrange(host_genus, host_species, host_site, ord, year, clade, DIV) %>%
   mutate(host_id = as_factor(host_id),
          sample_id = as_factor(paste(host_genus, host_species, host_id, year, sep = "_")),
          genus_species = as_factor(paste(str_sub(host_genus, 1, 1), ". ", host_species, sep = "")),
@@ -385,7 +391,7 @@ vmdf <- psmelt(vt) %>%
 # Plot variants
 g1 <- ggplot(vmdf, aes(x = sample_id, y = Abundance, fill = DIV, label = DIV)) + 
   geom_col(width = 1) + 
-  facet_nested(~ gspp + host_id, labeller = global_labeller,
+  facet_nested(~ gspp + host_site + host_id, labeller = global_labeller,
                scales = "free_x", space = "free_x",
                nest_line = element_line(linetype = 1),
                remove_labels = "x") +
@@ -394,12 +400,12 @@ g1 <- ggplot(vmdf, aes(x = sample_id, y = Abundance, fill = DIV, label = DIV)) +
   ylab("ITS2 sequences") +
   scale_fill_manual(values = vpal[vmdf$OTU]) +
   theme(legend.position = "none", panel.background = element_blank(), 
-        text = element_text(size = 7), plot.margin = margin(5.5, 5.5, 1, 5.5),
+        text = element_text(size = 6), plot.margin = margin(5.5, 5.5, 1, 5.5),
+        strip.text.x = element_text(margin = margin(0.5, 0, 0.5, 0, "mm"), face = "italic"),
         axis.title.x = element_blank(), axis.text = element_blank(),
         axis.ticks = element_blank(),
         panel.spacing = unit(0.25, "mm"),
-        strip.background = element_blank(),
-        strip.text.x = element_text(face = "italic"))
+        strip.background = element_blank())
 
 
 # Repeat for profiles
@@ -420,7 +426,7 @@ proford <- as_tibble(data.frame(tax_table(p))) %>%
   
 pmdf <- psmelt(p) %>%
   left_join(neword) %>%
-  arrange(host_genus, host_species, ord, year, clade, its2_type_profile) %>%
+  arrange(host_genus, host_species, host_site, ord, year, clade, its2_type_profile) %>%
   mutate(host_id = as_factor(host_id),
          sample_id = as_factor(paste(host_genus, host_species, host_id, year, sep = "_")),
          genus_species = as_factor(paste(str_sub(host_genus, 1, 1), ". ", host_species, sep = "")),
@@ -430,15 +436,16 @@ pmdf <- psmelt(p) %>%
   
 g2 <- ggplot(pmdf, aes(x = year, y = Abundance)) +
     geom_col(width = 1, aes(fill = its2_type_profile)) +
-    facet_nested(~ gspp + host_id, scales = "free_x", space = "free_x") +
+    facet_nested(~ gspp + host_site + host_id, scales = "free_x", space = "free_x") +
     scale_x_discrete(expand = c(0, 0)) +
     scale_y_continuous(expand = c(0, 0)) +
     ylab("Profiles") +
     scale_fill_manual(values = ppal[pmdf$its2_type_profile], limits = force, drop = TRUE) +
     theme(legend.position = "bottom", legend.key.size = unit(2, "mm"), legend.title = element_blank(),
           legend.margin = margin(1, 0, 0, 0), legend.box.margin = margin(-10, -10, 0, -10),
+          legend.key = element_rect(fill = NA),
           plot.margin = margin(0, 5.5, 5.5, 5.5),
-          text = element_text(size = 7), legend.text = element_text(size = 4),
+          text = element_text(size = 6), legend.text = element_text(size = 4),
           panel.background = element_blank(), strip.text.x = element_blank(),
           axis.title.x = element_blank(), axis.text = element_blank(),
           axis.ticks = element_blank(),
@@ -446,9 +453,9 @@ g2 <- ggplot(pmdf, aes(x = year, y = Abundance)) +
           panel.spacing = unit(0.25, "mm")) +
     guides(fill = guide_legend(ncol = 5))
 
-fig1 <- plot_grid(g1, g2, nrow = 2, label_fontface = "plain", rel_heights = c(0.6, 0.4))
+fig1 <- plot_grid(g1, g2, nrow = 2, label_fontface = "plain", rel_heights = c(0.55, 0.45))
 
-ggsave(fig1, filename = "Output/Figure1.png", width = 183, height = 60, units = "mm")
+ggsave(fig1, filename = "Output/Figure1.png", width = 183, height = 70, units = "mm")
 ```
 
 # More QC... filter out sketchy samples?
@@ -489,6 +496,48 @@ filter(pmdf, host_species == "furcata")
 #variants <- prune_taxa(taxa_sums(variants) != 0, variants)
 #profiles <- subset_samples(profiles, !host_id %in% c("51", "59"))
 #profiles <- prune_taxa(taxa_sums(profiles) != 0, profiles)
+```
+
+# Stats to compare species and sites
+```{r}
+## PERMANOVAs...
+varr <- transform_sample_counts(variants, function(x) sqrt(x/sum(x)))  
+
+cnat <- subset_samples(varr, host_species == "natans")
+adonis(distance(cnat, "bray") ~ host_site, data = as_tibble(sample_data(cnat)))
+plot_bar(cnat, x = "sample_name", fill = "clade") + facet_wrap(~host_site, scales = "free")
+
+dlab <- subset_samples(varr, host_species == "labrynthiformis")
+adonis(distance(dlab, "bray") ~ host_site, data = as_tibble(sample_data(dlab)))
+plot_bar(dlab, x = "sample_name", fill = "clade") + facet_wrap(~host_site, scales = "free")
+
+pstr <- subset_samples(varr, host_species == "strigosa")
+adonis(distance(pstr, "bray") ~ host_site, data = as_tibble(sample_data(pstr)))
+plot_bar(pstr, x = "sample_name", fill = "clade") + facet_wrap(~host_site, scales = "free")
+
+mcav <- subset_samples(varr, host_species == "cavernosa")
+adonis(distance(mcav, "bray") ~ host_site, data = as_tibble(sample_data(mcav)))
+plot_bar(mcav, x = "sample_name", fill = "clade") + facet_wrap(~host_site, scales = "free")
+
+ssid <- subset_samples(varr, host_species == "siderea")
+adonis(distance(ssid, "bray") ~ host_site, data = as_tibble(sample_data(ssid)))
+plot_bar(ssid, x = "sample_name", fill = "clade") + facet_wrap(~host_site, scales = "free")
+
+ofav <- subset_samples(varr, host_species == "faveolata")
+adonis(distance(ofav, "bray") ~ host_site, data = as_tibble(sample_data(ofav)))
+plot_bar(ofav, x = "sample_name", fill = "clade") + facet_wrap(~host_site, scales = "free")
+
+oann <- subset_samples(varr, host_species == "annularis")
+adonis(distance(oann, "bray") ~ host_site, data = as_tibble(sample_data(oann)))
+plot_bar(oann, x = "sample_name", fill = "clade") + facet_wrap(~host_site, scales = "free")
+
+ofra <- subset_samples(varr, host_species == "franksi")
+adonis(distance(ofra, "bray") ~ host_site, data = as_tibble(sample_data(ofra)))
+plot_bar(ofra, x = "sample_name", fill = "clade") + facet_wrap(~host_site, scales = "free")
+
+pfur <- subset_samples(varr, host_species == "furcata")
+adonis(distance(pfur, "bray") ~ host_site, data = as_tibble(sample_data(pfur)))
+plot_bar(pfur, x = "sample_name", fill = "clade") + facet_wrap(~host_site, scales = "free")
 ```
 
 
@@ -547,11 +596,10 @@ f2 <- as_tibble(emm) %>%
 ggsave(f2, filename = "Output/Figure2.png", width = 85, height = 85, units = "mm")
 ```
 
-# Some way of comparing within-colony differences to between-colony differences, to show that there's much more variability among colonies
+# Compare between-colony and within-colony Bray-Curtis dissimilarities across species
 
 ```{r}
 varr <- transform_sample_counts(variants, function(x) sqrt(x/sum(x)))    # Square-root transform
-#sample_data(varr)[sample_data(varr)$host_id == "59"]
 
 bd <- as.matrix(distance(varr, "bray"))
 xy <- t(combn(colnames(bd), 2))
@@ -567,12 +615,12 @@ brayord <- bd2 %>%
   group_by(species1) %>%
   summarize(medbray = median(dist)) %>%
   arrange(-medbray) %>%
-  mutate(species1 = as_factor(species1))
+  mutate(gspp = as_factor(species1))
   
 source("https://raw.githubusercontent.com/datavizpyr/data/master/half_flat_violinplot.R")
-bd2 %>% mutate(species1 = factor(species1, levels = levels(brayord$species1))) %>%
+f3 <- bd2 %>% mutate(gspp = factor(species1, levels = levels(brayord$gspp))) %>%
   ggplot(aes(x = group, y = dist)) +
-    facet_grid(~ species1) +
+    facet_grid(~ gspp, labeller = global_labeller) +
     geom_boxplot(width = 0.1, outlier.shape = NA, lwd = 0.2,
                  position = position_nudge(x = -0.2)) +
     geom_flat_violin(adjust = 1, position = position_nudge(x = 0.15), scale = "width",
@@ -580,33 +628,13 @@ bd2 %>% mutate(species1 = factor(species1, levels = levels(brayord$species1))) %
     geom_jitter(width = 0.05, alpha = 0.2, stroke = 0) +
     theme_custom() +
     #scale_x_discrete(expand = c(-1, 1.5)) +
-    theme(strip.background = element_blank()) +
+    theme(strip.background = element_blank(),
+          strip.text = element_text(face = "italic"),
+          text = element_text(size = 7), legend.text = element_text(size = 4)) +
     labs(y = "Bray-Curtis Dissimilarity", x = "")
   
+ggsave(f3, filename = "Output/Figure3.png", width = 183, height = 40, units = "mm")
 
-bd2 %>%
-  group_by(species1, group) %>%
-  summarize(med = median(dist)) %>%
-  pivot_wider(names_from = group, values_from = med) %>%
-  ggplot(aes(x = between, y = within, label = species1)) +
-  geom_smooth(method = "lm") +
-  geom_point() +
-  geom_label_repel() +
-  coord_cartesian(xlim = c(0, 1), ylim = c(0, 1))
-
-
-
-# between to within ratio
-hi <- bd2 %>%
-  group_by(species1, group) %>%
-  summarize(med = median(dist)) %>%
-  pivot_wider(names_from = group, values_from = med) %>%
-  mutate(bw = between/within) %>%
-  ungroup() %>%
-  arrange(-bw) %>%
-  mutate(species1 = as_factor(species1))
-
-ggplot(hi, aes(x = within, y = bw)) + geom_point()
 ```
 
 
