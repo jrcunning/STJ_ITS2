@@ -625,7 +625,7 @@ res2 %>%
 # Some way of comparing within-colony differences to between-colony differences, to show that there's much more variability among colonies
 
 ```{r}
-varr <- transform_sample_counts(variants, function(x) sqrt(x/sum(x)))     # Square-root transform
+varr <- transform_sample_counts(variants, function(x) sqrt(x/sum(x)))    # Square-root transform
 
 bd <- as.matrix(distance(varr, "bray"))
 xy <- t(combn(colnames(bd), 2))
@@ -633,17 +633,53 @@ bd2 <- as_tibble(data.frame(xy, dist=bd[xy])) %>%
   separate(X1, into = c("site1", "species1", "host_id1", "year1")) %>%
   separate(X2, into = c("site2", "species2", "host_id2", "year2")) %>%
   filter(species1 == species2) %>%
-  mutate(same_host_id = host_id1 == host_id2)
+  mutate(group = case_when(host_id1 == host_id2 ~ "within", TRUE ~ "between"))
+
+#order species by highest median between-colony difference
+brayord <- bd2 %>%
+  filter(group == "between") %>%
+  group_by(species1) %>%
+  summarize(medbray = median(dist)) %>%
+  arrange(-medbray) %>%
+  mutate(species1 = as_factor(species1))
+  
+source("https://raw.githubusercontent.com/datavizpyr/data/master/half_flat_violinplot.R")
+bd2 %>% mutate(species1 = factor(species1, levels = levels(hi$species1))) %>%
+  ggplot(aes(x = group, y = dist)) +
+    facet_wrap(~ species1, nrow = 1) +
+    geom_boxplot(width = 0.1, outlier.shape = NA, position = position_nudge(x = -0.2), lwd = 0.2) +
+    geom_flat_violin(adjust = 1, position = position_nudge(x = 0.15), scale = "width",
+                     lwd = 0, fill = "grey72") +
+    geom_jitter(width = 0.05, alpha = 0.2, stroke = 0) +
+    theme_custom() +
+    #scale_x_discrete(expand = c(-1, 1.5)) +
+    theme(strip.background = element_blank()) +
+    labs(y = "Bray-Curtis Dissimilarity", x = "")
   
 
-ggplot(bd2, aes(x = same_host_id, y = dist)) +
-  facet_wrap(~ species1) +
-  geom_violin() +
-  geom_point()
+bd2 %>%
+  group_by(species1, group) %>%
+  summarize(med = median(dist)) %>%
+  pivot_wider(names_from = group, values_from = med) %>%
+  ggplot(aes(x = between, y = within, label = species1)) +
+  geom_smooth(method = "lm") +
+  geom_point() +
+  geom_label_repel() +
+  coord_cartesian(xlim = c(0, 1), ylim = c(0, 1))
 
-test2 %>%
-  filter(s1_host_species == "siderea") %>%
-  arrange(-bray)
+
+
+# between to within ratio
+hi <- bd2 %>%
+  group_by(species1, group) %>%
+  summarize(med = median(dist)) %>%
+  pivot_wider(names_from = group, values_from = med) %>%
+  mutate(bw = between/within) %>%
+  ungroup() %>%
+  arrange(-bw) %>%
+  mutate(species1 = as_factor(species1))
+
+ggplot(hi, aes(x = within, y = bw)) + geom_point()
 ```
 
 
