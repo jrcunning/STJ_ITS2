@@ -514,10 +514,118 @@ filter(pmdf, host_species == "furcata")
 #profiles <- prune_taxa(taxa_sums(profiles) != 0, profiles)
 ```
 
+```{r}
+# which profiles in which species?
+favi <- pmdf %>%
+  filter(host_family == "Faviidae") %>%
+  select(Sample, gspp, Abundance, clade, its2_type_profile) %>%
+  group_by(gspp, clade, its2_type_profile) %>%
+  summarize(meanAbund = mean(Abundance), n = n()) %>%
+  ungroup()
+
+favi %>%
+  filter(clade == "B") %>%
+  arrange(its2_type_profile) %>%
+  arrange(-n) %>%
+  print(n = nrow(.))
+
+# Dlab's Breviolum is also found at in one Mcav sample...
+pmdf %>% filter(its2_type_profile == "B1-B1al-B1aj-B1ak-B1aa")
+# Dlab's other Breviolum is also found at in one Mcav sample...
+pmdf %>% filter(its2_type_profile == "B1-B1z-B1aa-B1ad-B1ac-B1ab")
+# Pstr's Breviolum is also found in Mcav, Ofav, Ofra, Ssid
+pmdf %>% filter(its2_type_profile == "B1-B1x-B1t-B14b-B1af-B1ae-B1ag")
+# Cnat's Breviolum is also found in Mcav and Ofra
+pmdf %>% filter(its2_type_profile == "B19/B5af-B19e-B19c-B5ag-B19d-B19f-B40a-B19h")
+
+
+
+# Changes in dominant genus
+genus_change <- pmdf %>%
+  filter(Abundance >= 0.5) %>%
+  group_by(gspp, host_id) %>%
+  summarize(n_dom_clades = n_distinct(host_id, clade)) %>%
+  filter(n_dom_clades > 1)
+
+# 4 colonies shuffled genera
+# how many total colonies sampled more than one year?
+pmdf %>%
+  count(host_id) %>%
+  count(n > 1)
+# 59 colonies sampled more than once, and 4 shuffled genera, so 55 did not
+
+
+# Changes in dominant profile
+prof_change <- pmdf %>%
+  filter(Abundance >= 0.5) %>%
+  group_by(gspp, clade, host_id) %>%
+  summarize(n_dom_profs = n_distinct(host_id, clade, its2_type_profile)) %>%
+  filter(n_dom_profs > 1)
+prof_change %>% distinct(gspp)
+# 13 colonies changed dominant profile within genus
+# how many total colonies sampled more than one year?
+pmdf %>%
+  distinct(host_id, year) %>%
+  count(host_id) %>%
+  count(n > 1)
+# 56 colonies sampled more than once, 4 shuffled genera, and 13 shuffled profiles, so 39 did not
+
+
+
+# changes in background symbionts
+vmdf %>%
+  group_by(gspp, host_id, year, clade) %>%
+  summarize(Abundance = sum(Abundance))  %>%
+  filter(Abundance >= 0.01) %>%     # Threshold (as proportion)
+  distinct(gspp, host_id, year, clade) %>%
+  group_by(gspp, host_id, year) %>%
+  summarize(nclades = n_distinct(clade)) %>%
+  group_by(gspp, host_id) %>%
+  filter(n() > 1) %>%    # only hosts sampled in more than one year
+  summarize(nnclades = n_distinct(nclades)) %>%
+  arrange(-nnclades) %>%
+  print(n = nrow(.))
+  
+# 32 of 56 (=57%) colonies sampled more than once had a change in number of clades present at > 0.1% abund
+# 27 of 56 (=48%) had change in number of clades present at >1%
+# 8 of 56 (=14%) had change in number of clades present at >10%
+
+nclad <- vmdf %>%
+  group_by(gspp, host_site, host_id, year, clade) %>%
+  summarize(Abundance = sum(Abundance)) %>%
+  filter(Abundance >= 0.01) %>%   # 1%
+  distinct(gspp, host_site, host_id, year, clade) %>%
+  group_by(gspp, host_site, host_id) %>%
+  filter(n() > 1) %>%
+  group_by(gspp, host_site, host_id, year) %>%
+  summarize(nclades = n_distinct(clade)) %>%
+  filter(gspp != "Pfur") %>%
+  mutate(year = factor(year))
+
+ggplot(nclad, aes(x = year, y = nclades)) +
+  geom_jitter(width = 0.1, height = 0.1, alpha = 0.5) +
+  #geom_line(aes(group = host_id)) +
+  facet_wrap(~ gspp)
+
+mod <- lmerTest::lmer(nclades ~ year * gspp + (1|host_site) + (1|host_id), data = nclad)
+hist(residuals(mod))
+car::Anova(mod)
+emm <- emmeans(mod, c("year", "gspp"))
+
+contrast(emm, "pairwise", by = "gspp")
+# some evidence for decreasing number of clades per colony over time?
+as_tibble(emm) %>%
+  ggplot(aes(x = year, y = emmean, color = gspp, group = gspp)) +
+  geom_line()
+
+contrast(emmeans(mod, "year"), "pairwise")
+```
+
 # Stats to compare species and sites
 ```{r}
 ## PERMANOVAs...
 varr <- transform_sample_counts(variants, function(x) sqrt(x/sum(x)))  
+
 
 cnat <- subset_samples(varr, host_species == "natans")
 adonis(distance(cnat, "bray") ~ host_site, data = as_tibble(sample_data(cnat)))
