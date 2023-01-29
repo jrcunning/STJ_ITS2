@@ -325,21 +325,37 @@ write_csv(table1, path = "Output/Table1.csv")
 
 # QC (filter out low read samples)
 ```{r QC, include = FALSE}
+# Total number of post-MED sequences
+sum(sample_sums(variants))
+nsamples(variants)
+
 # Filter out samples with low read counts
 low <- sample_sums(variants) < 1000
+table(low)  # Number of samples being filtered out due to low read counts
 variants <- subset_samples(variants, !low)
 variants <- prune_taxa(taxa_sums(variants) != 0, variants)
 profiles <- subset_samples(profiles, !low)
 profiles <- prune_taxa(taxa_sums(profiles) != 0, profiles)
 
-hist(log10(sample_sums(variants)))
 # Read count analysis
-# ntaxa(variants)
-# ntaxa(profiles)
-# min(sample_sums(variants))
-# max(sample_sums(variants))
-# mean(sample_sums(variants))
-# sd(sample_sums(variants))/sqrt(nsamples(variants))
+hist(sample_sums(variants), breaks = 100)
+# One sample is an outlier with very high read count -- remove for summary stats of remaining samples
+outlier <- sample_sums(variants)[which(sample_sums(variants) == max(sample_sums(variants)))]
+woout <- sample_sums(variants)[which(sample_sums(variants) != max(sample_sums(variants)))]
+# Histogram of remaining samples read counts
+hist(woout, breaks = 50)
+# Mean and standard deviation
+mean(woout); sd(woout)
+
+# Number of sequence variants and profiles
+ntaxa(variants)
+ntaxa(profiles)
+
+# Parse sequences and profiles by genus(/clade)
+data.frame(tax_table(variants)) %>% as_tibble() %>%
+  count(clade)
+data.frame(tax_table(profiles)) %>% as_tibble() %>%
+  count(clade)
 ```
 
 # Barplots for whole dataset
@@ -631,7 +647,6 @@ f3 <- bd2 %>% mutate(gspp = factor(species1, levels = levels(brayord$gspp))) %>%
                  position = position_nudge(x = 0.15)) +
     geom_jitter(width = 0.075, alpha = 0.2, stroke = 0) +
     theme_custom() +
-    #scale_x_discrete(expand = c(-1, 1.5)) +
     theme(strip.background = element_blank(),
           strip.text = element_text(face = "italic"),
           text = element_text(size = 7), legend.text = element_text(size = 4),
