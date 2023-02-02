@@ -115,6 +115,11 @@ set.seed(888)
 vpal <- sample(allcolors, ntaxa(variants))
 #vpal <- hue_pal(l = 65)(ntaxa(variants))
 vpal <- setNames(vpal, taxa_names(variants))
+
+
+
+# Coral colors
+
 ```
 
 ```{r plotting_functions, include = FALSE}
@@ -227,15 +232,30 @@ theme_custom <- function() {
     )
 }
 
-scale_color_corals <- function(aesthetic, ...){
-    ggplot2:::manual_scale(
-        aesthetic,
-        values = setNames(c('#00BFC4', '#CD9600', '#7CAE00', '#00BE67', 
-                            '#F8766D', '#00A9FF', '#C77CFF', '#FF61CC'),
-                          c('annularis', 'cavernosa', 'faveolata', 'franksi', 
-                            'labrynthiformis', 'natans', 'siderea', 'strigosa')), 
-        ...
-    )
+# scale_color_corals <- function(aesthetic, ...){
+#     ggplot2:::manual_scale(
+#         aesthetic,
+#         values = setNames(c('#00BFC4', '#CD9600', '#7CAE00', '#00BE67', 
+#                             '#F8766D', '#00A9FF', '#C77CFF', '#FF61CC'),
+#                           c('annularis', 'cavernosa', 'faveolata', 'franksi', 
+#                             'labrynthiformis', 'natans', 'siderea', 'strigosa')), 
+#         ...
+#     )
+# }
+
+scale_color_corals <- function(aesthetic, ...) {
+  ggplot2:::manual_scale(
+    aesthetic,
+    labels = c("M. cavernosa", "S. siderea", "O. annularis", 
+               "D. labyrinthiformis", "O. franksi", "C. natans", 
+               "P. strigosa", "P. furcata", "O. faveolata"),
+    values = setNames(c("#00B9E3", "#00BA38", "#F8766D",
+                        "#93AA00", "#FF61C3", "#00C19F",
+                        "#619CFF", "#D39200", "#DB72FB"),
+                      c("cavernosa", "siderea", "annularis",
+                        "labrynthiformis", "franksi", "natans",
+                        "strigosa", "furcata", "faveolata")),
+    ...)
 }
 
 sppord <- factor(levels = c("Cnat", "Dlab", "Pstr", "Pfur",
@@ -516,7 +536,7 @@ filter(pmdf, host_species == "furcata")
 #profiles <- prune_taxa(taxa_sums(profiles) != 0, profiles)
 ```
 
-```{r}
+```{r, dom_bk_etc}
 # which profiles in which species?
 favi <- pmdf %>%
   filter(host_family == "Faviidae") %>%
@@ -610,6 +630,7 @@ nnclades <- nclades %>%
             nnclades.10  = n_distinct(nclades.10))
 table(nnclades$nnclades.0.1 > 1) # 32/56 (57%) colonies had a change in the number of clades > 0.1% abund
 table(nnclades$nnclades.1 > 1) # 27/56 (48%) colonies had a change in the number of clades > 1% abund
+nnclades %>% filter(nnclades.1 > 1) %>% ungroup() %>% count(gspp)
 table(nnclades$nnclades.10 > 1) # 8/56 (14%) colonies had a change in the number of clades > 10% abund
 
 # did change in number of clades vary by coral species?   NO EFFECT, NOT MUCH STATISTICAL POWER
@@ -675,6 +696,124 @@ mod <- glmer(D ~ dom + (1|gspp) + (1|host_site), data = filter(test2, dom != "D"
 anova(mod)
 plot(emmeans(mod, specs = "dom", type = "response"))
 
+test3 <- test %>%
+  select(gspp, host_site, host_id, dom, bk) %>%
+  unnest(bk) %>%
+  right_join(select(test, gspp, host_site, host_id, dom)) %>%
+  mutate(bk = case_when(is.na(bk) ~ "none", TRUE ~ bk))
+
+dombk <- test3 %>%
+  group_by(dom) %>%
+  count(bk) %>%
+  pivot_wider(names_from = bk, values_from = n, values_fill = 0) %>%
+  ungroup()
+hi<-dombk %>%
+  select(-dom) %>%
+  as.matrix()
+chisq.test(hi)
+dombk %>% select(dom, A, B, C, D, none)
+
+
+
+gsppbk <- test3 %>%
+  group_by(gspp) %>%
+  count(bk) %>%
+  pivot_wider(names_from = bk, values_from = n)
+```
+
+```{r nmds}
+clades5 <- vmdf %>%
+  # Get clade level relative abundances
+  group_by(Sample, gspp, host_site, host_id, year, clade) %>%
+  summarize(Abundance = sum(Abundance)) %>%
+  group_by(Sample, gspp, host_site, host_id, year) %>%
+  filter(Abundance > 0.05) %>%
+  ungroup()
+Bdom <- clades5 %>% filter(clade == "B")
+Cdom <- clades5 %>% filter(clade == "C")
+#NMDS
+# Look at just Breviolum -dominated corals
+varB <- subset_samples(variants, sample_name %in% Bdom$Sample)
+varB <- subset_taxa(varB, clade == "B")
+# Run NMDS for visualization
+set.seed(54)
+varB.nmds <- ordinate(varB, "NMDS", "bray")
+varB.nmds.s <- plot_ordination(varB, varB.nmds, type="samples")
+# Plot NMDS
+Bnmds <- as_tibble(varB.nmds.s$data) %>%
+  arrange(host_id, year) %>%
+  ggplot(aes(x = NMDS1, y = NMDS2, shape = host_species, color = host_species)) +
+  geom_point(alpha = 0.5, size = 3) +
+  geom_path(aes(group = host_id)) +
+  theme_custom()
+
+# Look at just Cladocopium -dominated corals
+varC <- subset_samples(variants, sample_name %in% Cdom$Sample)
+varC <- subset_taxa(varC, clade == "C")
+# Run NMDS for visualization
+set.seed(55)
+varC.nmds <- ordinate(varC, "NMDS", "bray")
+varC.nmds.s <- plot_ordination(varC, varC.nmds, type="samples")
+# Plot NMDS
+Cnmds <- as_tibble(varC.nmds.s$data) %>%
+  arrange(host_id, year) %>%
+  ggplot(aes(x = NMDS1, y = NMDS2, color = host_species, shape = host_species)) +
+  geom_point(alpha = 0.5, size = 3) +
+  geom_path(aes(group = host_id)) +
+  scale_shape_manual(values = 1:9) +
+  theme_custom(); Cnmds
+
+plot_grid(Bnmds, Cnmds, nrow = 1)
+
+bind_rows(varB.nmds.s$data, varC.nmds.s$data, .id = "genus_set") %>%
+  arrange(host_id, year) %>%
+  ggplot(aes(x = NMDS1, y = NMDS2, color = host_species, shape = host_species)) +
+  facet_wrap(~ genus_set, scales = "free") +
+  geom_point(alpha = 0.5, size = 6) +
+  geom_path(aes(group = host_id), linewidth = 0.1) +
+  scale_shape_manual(values = 8:0) +
+  theme_custom()
+
+
+
+
+# LOOK AT ALL CORALS?
+# Run NMDS for visualization
+set.seed(55)
+var.nmds <- ordinate(variants, "NMDS", "bray")
+var.nmds.s <- plot_ordination(variants, var.nmds, type="samples")
+# Plot NMDS
+allnmds <- as_tibble(var.nmds.s$data) %>%
+  arrange(host_id, year) %>%
+  ggplot(aes(x = NMDS1, y = NMDS2, shape = host_species, color = host_species)) +
+  geom_point(alpha = 0.5, size = 2) +
+  geom_path(aes(group = host_id), arrow = arrow(ends = "last", length = unit(1, "mm"))) +
+  scale_shape_manual(values = 1:9) +
+  theme_custom()
+
+hull_data <- as_tibble(var.nmds.s$data) %>%
+  group_by(host_species) %>% 
+  slice(chull(NMDS1, NMDS2))
+as_tibble(var.nmds.s$data) %>%
+  arrange(host_id, year) %>%
+  ggplot(aes(x = NMDS1, y = NMDS2, shape = host_species, 
+             color = host_species, fill = host_species)) +
+  geom_point(alpha = 0.5, size = 2) +
+  scale_shape_manual(values = 1:9) +
+  theme_custom() +
+  geom_polygon(aes(group = host_species, fill = host_species),
+               data = hull_data, alpha = 0.3, linewidth = 0)# +
+  #stat_density_2d(geom = "polygon", alpha = 0.05, lwd = 0, binwidth = 0.5)
+
+as_tibble(var.nmds.s$data) %>%
+  arrange(host_id, year) %>%
+  ggplot(aes(x = NMDS1, y = NMDS2, shape = host_species, 
+             color = host_species, fill = host_species)) +
+  geom_point(alpha = 0.5, size = 1) +
+  scale_shape_manual(values = 1:9) +
+  theme_custom() +
+  stat_centroid(aes(xend = NMDS1, yend = NMDS2, group = host_species), 
+                geom = "segment", crop_other = FALSE)
 ```
 
 # Stats to compare species and sites
@@ -740,7 +879,8 @@ sc4 <- sc %>%
          yeary = if_else(year1 < year2, year2, year1)) %>%
   select(host_id = host_id1, host_species = species1,
          year1 = yearx, year2 = yeary, dist) %>%
-  filter(year1 == 2017)
+  filter(year1 == 2017) %>%
+  mutate(year2 = as_factor(year2))
 
 mod <- lmer(log(dist) ~ year2 * host_species + (1|host_id), 
             data = filter(sc4, host_species != "Pfur"))
@@ -749,6 +889,7 @@ shapiro.test(residuals(mod))
 car::Anova(mod)
 emm <- emmeans(mod, specs = c("year2", "host_species"), type = "response")
 contrast(emm, "pairwise", by = "host_species")
+contrast(emm, "pairwise", by = "year2", adjust = "none")
 
 
 f2 <- as_tibble(emm) %>%
@@ -821,6 +962,12 @@ f3 <- bd2 %>% mutate(gspp = factor(species1, levels = levels(brayord$gspp))) %>%
 
 ggsave(f3, filename = "Output/Figure3.png", width = 183, height = 40, units = "mm")
 
+bd2 %>%
+  group_by(species1, group) %>%
+  summarize(median_dist = median(dist)) %>%
+  pivot_wider(names_from = group, values_from = median_dist) %>%
+  mutate(btw_wit = between/within) %>%
+  arrange(btw_wit)
 ```
 
 
