@@ -793,7 +793,7 @@ clade_nmds <- bind_rows(
           text = element_text(size = 6), legend.text = element_text(size = 4)) +
   guides(shape = guide_legend(ncol = 9))
 
-bigfig <- plot_grid(fig1, clade_nmds, nrow = 2, rel_heights = c(0.55, 0.45))
+bigfig <- plot_grid(fig1, clade_nmds, nrow = 2, labels = "AUTO", rel_heights = c(0.55, 0.45))
 ggsave(bigfig, filename = "Output/bigfig.png", width = 183, height = 120, units = "mm")
 
 # LOOK AT ALL CORALS?
@@ -835,6 +835,43 @@ as_tibble(var.nmds.s$data) %>%
                 geom = "segment", crop_other = FALSE, linewidth = 0.25)
 
 
+
+
+as_tibble(varB.nmds.s$data) %>%
+  filter(host_species == "siderea")
+
+pmdf2 <- psmelt(p) 
+pmdf2 %>% filter(host_id == "51", Abundance > 0.5)
+pmdf2 %>% filter(its2_type_profile == "B1-B1z-B1aa-B1ad-B1ac-B1ab", Abundance > 0.5)
+pmdf2 %>% filter(its2_type_profile == "B1-B1x-B1t-B14b-B1af-B1ae-B1ag", Abundance > 0.5)
+pmdf2 %>% filter(host_species == "cavernosa", Abundance > 0.9)
+pmdf2 %>% filter(grepl("C40g", its2_type_profile), Abundance > 0) %>% 
+  as_tibble() %>% select(Sample, Abundance, host_id, year, host_species) %>% print(n = nrow(.))
+pmdf2 %>% filter(grepl("C3an", its2_type_profile), Abundance > 0) %>% 
+  as_tibble() %>% select(Sample, Abundance, host_id, year, host_species,
+                         its2_type_profile) %>% print(n = nrow(.))
+pmdf2 %>% filter(grepl("C7", its2_type_profile), Abundance > 0.01) %>% 
+  as_tibble() %>% select(Sample, Abundance, host_id, year, host_species,
+                         its2_type_profile) %>% print(n = nrow(.))
+pmdf2 %>% filter(host_species == "strigosa", clade == "C", Abundance > 0.5)
+
+pmdf2 %>% filter(grepl("C3fe", its2_type_profile), Abundance > 0)
+pmdf2 %>% filter(grepl("C54a", its2_type_profile), Abundance > 0)
+
+pmdf2 %>% filter(host_species == "siderea", clade == "C", Abundance > 0.5)
+pmdf2 %>% filter(grepl("C3a-", its2_type_profile), Abundance > 0)
+pmdf2 %>% filter(grepl("C16a", its2_type_profile), Abundance > 0)
+
+pmdf2 %>% filter(host_species == "furcata", clade == "C", Abundance > 0)
+pmdf2 %>% filter(grepl("C47", its2_type_profile), Abundance > 0)
+pmdf2 %>% filter(grepl("C42", its2_type_profile), Abundance > 0)
+pmdf2 %>% filter(grepl("C45a", its2_type_profile), Abundance > 0)
+
+
+pmdf2 %>% filter(host_species == "natans", clade == "B", Abundance > 0)
+pmdf2 %>% filter(grepl("B5af", its2_type_profile), Abundance > 0)
+pmdf2 %>% filter(host_species == "strigosa", clade == "B", Abundance > 0)
+pmdf2 %>% filter(grepl("B1x", its2_type_profile), Abundance > 0)
 ```
 
 # Stats to compare species and sites
