@@ -427,24 +427,25 @@ vmdf <- psmelt(vt) %>%
          DIV = factor(DIV, levels = divord$DIV))
 
 # Plot variants
-g1 <- ggplot(vmdf, aes(x = sample_id, y = Abundance, fill = DIV, label = DIV)) + 
-  geom_col(width = 1) + 
-  facet_nested(~ gspp + host_site + host_id, labeller = global_labeller,
-               scales = "free_x", space = "free_x",
+g1 <- ggplot(vmdf, aes(x = year, y = Abundance)) + 
+  geom_col(width = 1, aes(fill = DIV)) + 
+  facet_nested(~ gspp + host_site + host_id, 
+               labeller = global_labeller,
+               space = "free_x",
                nest_line = element_line(linetype = 1),
                remove_labels = "x") +
   scale_x_discrete(expand = c(0, 0)) +
   scale_y_continuous(expand = c(0, 0), labels = scales::percent) +
   ylab("ITS2 sequences") +
   scale_fill_manual(values = vpal[vmdf$OTU]) +
-  theme(legend.position = "none", panel.background = element_blank(), 
+  theme(legend.position = "none", panel.background = element_blank(),
         text = element_text(size = 6), plot.margin = margin(5.5, 5.5, 1, 5.5),
         strip.text.x = element_text(margin = margin(0.5, 0, 0.5, 0, "mm"), face = "italic"),
         axis.title.x = element_blank(), axis.text = element_blank(),
         axis.ticks = element_blank(),
         panel.spacing = unit(0.25, "mm"),
         strip.background = element_blank())
-
+g1
 
 # Repeat for profiles
 ### truncate its2_type_profile names
@@ -475,11 +476,16 @@ pmdf <- psmelt(p) %>%
          genus_species = as_factor(paste(str_sub(host_genus, 1, 1), ". ", host_species, sep = "")),
          gspp = factor(paste0(str_sub(host_genus, 1, 1), str_sub(host_species, 1, 3)),
                        levels = levels(sppord))) %>%
-  filter(Abundance > 0.01)
+  filter(Abundance > 0.01)# %>% 
+  #complete(year, host_id)
+
+pmdf <- pmdf %>%
+  mutate(yearlab = case_when(host_id == "12" ~ year,
+                             TRUE ~ ""))
   
 g2 <- ggplot(pmdf, aes(x = year, y = Abundance)) +
     geom_col(width = 1, aes(fill = its2_type_profile)) +
-    facet_nested(~ gspp + host_site + host_id, scales = "free_x", space = "free_x") +
+    facet_nested(~ gspp + host_site + host_id) +
     scale_x_discrete(expand = c(0, 0)) +
     scale_y_continuous(expand = c(0, 0)) +
     ylab("Profiles") +
@@ -490,16 +496,25 @@ g2 <- ggplot(pmdf, aes(x = year, y = Abundance)) +
           plot.margin = margin(0, 5.5, 5.5, 5.5),
           text = element_text(size = 6), legend.text = element_text(size = 4.4),
           panel.background = element_blank(), strip.text.x = element_blank(),
-          axis.title.x = element_blank(), axis.text = element_blank(),
-          axis.ticks = element_blank(),
+          axis.title.x = element_blank(), axis.text.y = element_blank(), 
+          axis.text.x = element_text(angle = 90, vjust = 0.5, size = 3),
+          axis.ticks.x = element_line(size = 0.25),
+          axis.ticks.y = element_blank(),
           strip.background = element_blank(),
           panel.spacing = unit(0.25, "mm")) +
     guides(fill = guide_legend(ncol = 8))
+g2
 
 fig1 <- plot_grid(g1, g2, nrow = 2, label_fontface = "plain", rel_heights = c(0.6, 0.4))
 
+fig1
+
 ggsave(fig1, filename = "Output/Figure1.png", width = 183, height = 70, units = "mm")
 ```
+
+
+
+
 
 # More QC... filter out sketchy samples?
 ```{r, include = FALSE, eval = FALSE}
@@ -780,8 +795,8 @@ clade_nmds <- bind_rows(
                                                   "Cladocopium", "Durusdinium"))) %>%
   ggplot(aes(x = NMDS1, y = NMDS2, color = host_species, shape = host_species)) +
   facet_wrap(~ sym_genus, scales = "free", nrow = 1) +
-  geom_point(alpha = 0.5, size = 2) +
-  geom_path(aes(group = host_id), linewidth = 0.1) +
+  geom_point(alpha = 1, size = 2) +
+  geom_path(aes(group = host_id), linewidth = 0.2) +
   scale_shape_manual(values = 8:0) +
   theme_custom() +
   theme(legend.position = "bottom",
@@ -793,8 +808,11 @@ clade_nmds <- bind_rows(
           text = element_text(size = 6), legend.text = element_text(size = 4)) +
   guides(shape = guide_legend(ncol = 9))
 
-bigfig <- plot_grid(fig1, clade_nmds, nrow = 2, labels = "AUTO", rel_heights = c(0.55, 0.45))
-ggsave(bigfig, filename = "Output/bigfig.png", width = 183, height = 120, units = "mm")
+clade_nmds
+ggsave(clade_nmds, filename = "Output/clade_nmds.png", width = 183, height = 60, units = "mm")
+
+# bigfig <- plot_grid(fig1, clade_nmds, nrow = 2, labels = "AUTO", rel_heights = c(0.55, 0.45))
+# ggsave(bigfig, filename = "Output/bigfig.png", width = 183, height = 120, units = "mm")
 
 # LOOK AT ALL CORALS?
 # Run NMDS for visualization
@@ -824,15 +842,42 @@ as_tibble(var.nmds.s$data) %>%
                data = hull_data, alpha = 0.3, linewidth = 0)# +
   #stat_density_2d(geom = "polygon", alpha = 0.05, lwd = 0, binwidth = 0.5)
 
+set.seed(55)
 as_tibble(var.nmds.s$data) %>%
   arrange(host_id, year) %>%
-  ggplot(aes(x = NMDS1, y = NMDS2, shape = host_species, 
-             color = host_species, fill = host_species)) +
-  geom_point(alpha = 0.5, size = 1) +
-  scale_shape_manual(values = 1:9) +
-  theme_custom() +
-  stat_centroid(aes(xend = NMDS1, yend = NMDS2, group = host_species), 
-                geom = "segment", crop_other = FALSE, linewidth = 0.25)
+  ggplot(aes(x = NMDS1, y = NMDS2)) +
+  geom_point(aes(shape = year, color = year)) +
+  geom_path(aes(group = host_id), alpha = 0.5, arrow = arrow(ends = "last", length = unit(2, "mm"))) +
+  facet_wrap(~host_species, scales = "fixed") +
+  theme_custom()
+  # coord_fixed(xlim = c(-1, 1), ylim = c(-1, 1))
+
+as_tibble(var.nmds.s$data) %>%
+  group_by(host_id) %>%
+  filter(any(year == "2017")) %>%
+  mutate(NMDS1adj = NMDS1 - NMDS1[year == "2017"],
+         NMDS2adj = NMDS2 - NMDS2[year == "2017"]) %>%
+  ungroup() %>%
+  arrange(host_id, year) %>%
+  ggplot(aes(x = NMDS1adj, y = NMDS2adj)) +
+  geom_point(aes(shape = year, color = year)) +
+  geom_path(aes(group = host_id), alpha = 0.5, arrow = arrow(ends = "last", length = unit(2, "mm"))) +
+  facet_wrap(~host_species) +
+  scale_x_continuous(limits = c(-0.7, 0.7)) +
+  scale_y_continuous(limits = c(-0.7, 0.7)) +
+  theme_custom()
+
+
+
+# as_tibble(var.nmds.s$data) %>%
+#   arrange(host_id, year) %>%
+#   ggplot(aes(x = NMDS1, y = NMDS2, shape = host_species, 
+#              color = host_species, fill = host_species)) +
+#   geom_point(alpha = 0.5, size = 1) +
+#   scale_shape_manual(values = 1:9) +
+#   theme_custom() +
+#   stat_centroid(aes(xend = NMDS1, yend = NMDS2, group = host_species), 
+#                 geom = "segment", crop_other = FALSE, linewidth = 0.25)
 
 
 
@@ -973,6 +1018,33 @@ f2 <- as_tibble(emm) %>%
                        name = "")
 
 ggsave(f2, filename = "Output/Figure2.png", width = 85, height = 85, units = "mm")
+
+
+set.seed(55)
+varr.nmds <- ordinate(varr, "NMDS", "bray")
+varr.nmds.s <- plot_ordination(varr, varr.nmds, type="samples")
+as_tibble(varr.nmds.s$data) %>%
+  arrange(host_id, year) %>%
+  ggplot(aes(x = NMDS1, y = NMDS2)) +
+  geom_point(aes(shape = year, color = year)) +
+  geom_path(aes(group = host_id), alpha = 0.5, arrow = arrow(ends = "last", length = unit(2, "mm"))) +
+  facet_wrap(~host_species) +
+  theme_custom()
+
+as_tibble(varr.nmds.s$data) %>%
+  group_by(host_id) %>%
+  filter(any(year == "2017")) %>%
+  mutate(NMDS1adj = NMDS1 - NMDS1[year == "2017"],
+         NMDS2adj = NMDS2 - NMDS2[year == "2017"]) %>%
+  ungroup() %>%
+  arrange(host_id, year) %>%
+  ggplot(aes(x = NMDS1adj, y = NMDS2adj)) +
+  geom_point(aes(shape = year, color = year)) +
+  geom_path(aes(group = host_id), alpha = 0.5, arrow = arrow(ends = "last", length = unit(2, "mm"))) +
+  facet_wrap(~host_species) +
+  scale_x_continuous(limits = c(-1, 1)) +
+  scale_y_continuous(limits = c(-1, 1)) +
+  theme_custom()
 ```
 
 # Compare between-colony and within-colony Bray-Curtis dissimilarities across species
@@ -1026,6 +1098,24 @@ bd2 %>%
   pivot_wider(names_from = group, values_from = median_dist) %>%
   mutate(btw_wit = between/within) %>%
   arrange(btw_wit)
+
+# revised figure 3
+bd2 %>% mutate(gspp = factor(species1, levels = levels(brayord$gspp))) %>%
+  ggplot(aes(x = group, y = dist)) +
+    facet_wrap(~ gspp, labeller = global_labeller, ncol = 5) +
+    # geom_flat_violin(adjust = 1, position = position_nudge(x = 0.15), scale = "width",
+    #                  lwd = 0, fill = "grey72") +
+    geom_boxplot(width = 0.1, outlier.shape = NA, lwd = 0.2,
+                 position = position_nudge(x = 0.15)) +
+    geom_jitter(width = 0.075, alpha = 0.2, stroke = 0) +
+    theme_custom() +
+    theme(strip.background = element_blank(),
+          strip.text = element_text(face = "italic"),
+          text = element_text(size = 7), legend.text = element_text(size = 4),
+          axis.ticks.x = element_blank(),
+          axis.text.x = element_text(hjust = 0)) +
+    labs(y = "Bray-Curtis Dissimilarity", x = "") +
+    coord_cartesian(xlim = c(1.3, 2.1))
 ```
 
 
