@@ -449,10 +449,9 @@ g1
 
 # Repeat for profiles
 ### truncate its2_type_profile names
-#### truncate profiles
 pp <- as_tibble(data.frame(tax_table(p))) %>%
   arrange(clade, its2_type_profile) %>%
-  mutate(its2_type_profile = str_trunc(its2_type_profile, 22, "right"))
+  mutate(its2_type_profile_trunc = str_trunc(its2_type_profile, 22, "right"))
 np <- pp %>% count(clade) %>% pivot_wider(names_from = clade, values_from = n)
 acols <- tail(brewer.pal(5, "Greys"), np$A)
 bcols <- colorRampPalette(brewer.pal(9, "YlGn"))(np$B)
@@ -460,18 +459,18 @@ ccols <- colorRampPalette(brewer.pal(9, "PuBu"))(np$C)
 dcols <- tail(brewer.pal(9, "Reds"), np$D)
 set.seed(556)
 ppal <- c(acols, bcols, ccols, dcols)
-ppal <- setNames(ppal, pp$its2_type_profile)
+ppal <- setNames(ppal, pp$its2_type_profile_trunc)
 
 proford <- as_tibble(data.frame(tax_table(p))) %>%
-  mutate(its2_type_profile = str_trunc(its2_type_profile, 22, "right")) %>%
-  arrange(clade, its2_type_profile) %>%
-  mutate(its2_type_profile = as_factor(its2_type_profile))
+  mutate(its2_type_profile_trunc = str_trunc(its2_type_profile, 22, "right")) %>%
+  arrange(clade, its2_type_profile_trunc) %>%
+  mutate(its2_type_profile = as_factor(its2_type_profile_trunc))
   
 pmdf <- psmelt(p) %>%
   left_join(neword) %>%
   arrange(host_genus, host_species, host_site, ord, year, clade, its2_type_profile) %>%
   mutate(host_id = as_factor(host_id),
-         its2_type_profile = str_trunc(its2_type_profile, 22, "right"),
+         its2_type_profile_trunc = str_trunc(its2_type_profile, 22, "right"),
          sample_id = as_factor(paste(host_genus, host_species, host_id, year, sep = "_")),
          genus_species = as_factor(paste(str_sub(host_genus, 1, 1), ". ", host_species, sep = "")),
          gspp = factor(paste0(str_sub(host_genus, 1, 1), str_sub(host_species, 1, 3)),
@@ -484,12 +483,12 @@ pmdf <- pmdf %>%
                              TRUE ~ ""))
   
 g2 <- ggplot(pmdf, aes(x = year, y = Abundance)) +
-    geom_col(width = 1, aes(fill = its2_type_profile)) +
+    geom_col(width = 1, aes(fill = its2_type_profile_trunc)) +
     facet_nested(~ gspp + host_site + host_id) +
     scale_x_discrete(expand = c(0, 0)) +
     scale_y_continuous(expand = c(0, 0)) +
     ylab("Profiles") +
-    scale_fill_manual(values = ppal[pmdf$its2_type_profile], limits = force, drop = TRUE) +
+    scale_fill_manual(values = ppal[pmdf$its2_type_profile_trunc], limits = force, drop = TRUE) +
     theme(legend.position = "bottom", legend.key.size = unit(2, "mm"), legend.title = element_blank(),
           legend.margin = margin(1, 0, 0, 0), legend.box.margin = margin(-10, -10, 0, -10),
           legend.key = element_rect(fill = NA),
@@ -514,49 +513,7 @@ ggsave(fig1, filename = "Output/Figure1.png", width = 183, height = 70, units = 
 
 
 
-
-
-# More QC... filter out sketchy samples?
-```{r, include = FALSE, eval = FALSE}
-vmdf %>% filter(DIV == "B14")
-# Colony 17 (O. franksi)
-filter(pmdf, host_id == "17")
-### 2017: 93% C7/C7d/C12c-C12b-C12e-C7h-C3-C7g (found in other Orb) + 6% B1-B1x-B1t-B14b-B1af-B1ae-B1ag (found in Ofra, Ofav, Mcav, Pstr, Ssid)
-### 2019: 100% B1-B1x-B1t-B14b-B1af-B1ae-B1ag (found in Mcav, Ofav, Ofra, and mostly Pstr)
-
-# Colony 59 Ofra or Pfur?
-filter(pmdf, host_id == "59")
-### 2017: 'Pfur': 100% C7/C7d/C12c-C12b-C12e-C7h-C3-C7g  (found in other Orbicellas) -- this must be an Orbicella sample?
-### 2019: 'Ofra': 99.6% B19/B5af-B19e-B19c-B5ag-B19d-B19f-B40a-B19h    (mostly found in Cnat + 1 Mcav) -- what is this?!?
-# change 2017 colony 59 from Pfur to Ofra
-sample_data(variants)[sample_data(variants)$host_id == "59" & sample_data(variants)$year == "2017", "host_species"] <- "franksi"
-sample_data(profiles)[sample_data(profiles)$host_id == "59" & sample_data(profiles)$year == "2017", "host_species"] <- "franksi"
-
-# Colony 51 (S. siderea)
-filter(pmdf, host_id == "51")
-### 2017: 100% B1-B1x-B1t-B14b-B1af-B1ae-B1ag (found in Mcav, Ofav, Ofra, and mostly Pstr)
-### 2019: 100% B1-B1z-B1aa-B1ad-B1ac-B1ab (found mostly in Dlab, 1Pstr)
-
-filter(pmdf, its2_type_profile == "B19/B5af-B19e-B19c-B5ag-B19d-B19f-B40a-B19h")
-filter(pmdf, its2_type_profile == "B1-B1x-B1t-B14b-B1af-B1ae-B1ag")
-filter(pmdf, its2_type_profile == "B1-B1z-B1aa-B1ad-B1ac-B1ab")
-filter(pmdf, its2_type_profile == "C7/C7d/C12c-C12b-C12e-C7h-C3-C7g") 
-filter(pmdf, host_species == "furcata")
-
-# Filter out P. furcata (only one colony sampled after first tagging)
-# variants <- subset_samples(variants, host_species != "furcata")
-# variants <- prune_taxa(taxa_sums(variants) != 0, variants)
-# profiles <- subset_samples(profiles, host_species != "furcata")
-# profiles <- prune_taxa(taxa_sums(profiles) != 0, profiles)
-
-
-#variants <- subset_samples(variants, !host_id %in% c("51", "59"))
-#variants <- prune_taxa(taxa_sums(variants) != 0, variants)
-#profiles <- subset_samples(profiles, !host_id %in% c("51", "59"))
-#profiles <- prune_taxa(taxa_sums(profiles) != 0, profiles)
-```
-
-```{r, dom_bk_etc}
+```{r, }
 # which profiles in which species?
 favi <- pmdf %>%
   filter(host_family == "Faviidae") %>%
@@ -564,26 +521,27 @@ favi <- pmdf %>%
   group_by(gspp, clade, its2_type_profile) %>%
   summarize(meanAbund = mean(Abundance), n = n()) %>%
   ungroup()
-
+# 
 favi %>%
   filter(clade == "B") %>%
   arrange(its2_type_profile) %>%
   arrange(-n) %>%
   print(n = nrow(.))
+# 
+# vmdf %>% filter(Abundance > 0) %>% filter(DIV == "B14b")
+# 
+# # Dlab's Breviolum is also found at in one Mcav sample...
+# pmdf %>% filter(its2_type_profile == "B1-B1al-B1aj-B1ak-B1aa")
+# # Dlab's other Breviolum is also found at in one Mcav sample...
+# pmdf %>% filter(its2_type_profile == "B1-B1z-B1aa-B1ad-B1ac-B1ab")
+# # Pstr's Breviolum is also found in Mcav, Ofav, Ofra, Ssid
+# pmdf %>% filter(its2_type_profile == "B1-B1x-B1t-B14b-B1af-B1ae-B1ag")
+# # Cnat's Breviolum is also found in Mcav and Ofra
+# pmdf %>% filter(its2_type_profile == "B19/B5af-B19e-B19c-B5ag-B19d-B19f-B40a-B19h")
+```
 
-vmdf %>% filter(Abundance > 0) %>% filter(DIV == "B14b")
 
-# Dlab's Breviolum is also found at in one Mcav sample...
-pmdf %>% filter(its2_type_profile == "B1-B1al-B1aj-B1ak-B1aa")
-# Dlab's other Breviolum is also found at in one Mcav sample...
-pmdf %>% filter(its2_type_profile == "B1-B1z-B1aa-B1ad-B1ac-B1ab")
-# Pstr's Breviolum is also found in Mcav, Ofav, Ofra, Ssid
-pmdf %>% filter(its2_type_profile == "B1-B1x-B1t-B14b-B1af-B1ae-B1ag")
-# Cnat's Breviolum is also found in Mcav and Ofra
-pmdf %>% filter(its2_type_profile == "B19/B5af-B19e-B19c-B5ag-B19d-B19f-B40a-B19h")
-
-
-
+```{r, dom_bk_etc}
 # Changes in dominant genus
 genus_change <- pmdf %>%
   filter(Abundance >= 0.5) %>%
@@ -634,114 +592,114 @@ table(mult$mult.0.1) # 64/70 (91%) colonies had multiple clades > 0.1% abund
 table(mult$mult.1) # 33/70 (47%) colonies had multiple clades > 1% abund
 table(mult$mult.10) # 11/70 (16%) colonies had multiple clades > 10% abund
 
-# did presence of multiple clades vary by coral species?
-mod <- glmer(mult.1 ~ gspp + (1|host_id) + (1|host_site), data = mult, family = "binomial")
-car::Anova(mod)
-anova(mod)
-plot(emmeans(mod, specs = "gspp", type = "response"))
-
-
-# how many colonies had a change in the number of clades over time?
-nnclades <- nclades %>%
-  group_by(gspp, host_site, host_id) %>%
-  filter(n() > 1) %>%    # only include colonies sampled more than once over time
-  summarize(nnclades.0.1 = n_distinct(nclades.0.1),
-            nnclades.1   = n_distinct(nclades.1),
-            nnclades.10  = n_distinct(nclades.10))
-table(nnclades$nnclades.0.1 > 1) # 32/56 (57%) colonies had a change in the number of clades > 0.1% abund
-table(nnclades$nnclades.1 > 1) # 27/56 (48%) colonies had a change in the number of clades > 1% abund
-nnclades %>% filter(nnclades.1 > 1) %>% ungroup() %>% count(gspp)
-table(nnclades$nnclades.10 > 1) # 8/56 (14%) colonies had a change in the number of clades > 10% abund
-
-# did change in number of clades vary by coral species?   NO EFFECT, NOT MUCH STATISTICAL POWER
-df <- nnclades %>%
-  mutate(nnclades.0.1 = nnclades.0.1 > 1)
-mod <- glmer(nnclades.0.1 ~ gspp + (1|host_id) + (1|host_site), data = df, family = "binomial")
-car::Anova(mod)
-anova(mod)
-plot(emmeans(mod, specs = "gspp", type = "response"))
-
-ggplot(nclades, aes(x = year, y = nclades.0.1)) +
-  geom_jitter(width = 0.1, height = 0.1, alpha = 0.5) +
-  facet_wrap(~ gspp)
-
-# Model number of clades over time -- filter out Pfur since only one colony sampled over time
-df <- filter(nclades, gspp != "Pfur") %>%
-  mutate(year = factor(year))
-mod <- lmerTest::lmer(nclades.0.1 ~ year * gspp + (1|host_site) + (1|host_id), data = df)
-hist(residuals(mod))
-car::Anova(mod)
-emm <- emmeans(mod, c("year", "gspp"))
-
-# some evidence for decreasing number of clades per colony over time?
-as_tibble(emm) %>%
-  ggplot(aes(x = year, y = emmean, color = gspp, group = gspp)) +
-  geom_line()
-
-contrast(emmeans(mod, "year"), "pairwise")
-
-
-# which background clades are fluctuating?
-fluc <- clades %>%
-  pivot_longer(cols = c(A, B, C, D), names_to = "clade", values_to = "Abundance") %>%
-  filter(host_id %in% nnclades$host_id[nnclades$nnclades.1 > 1],     # select colonies with changing # clades > 1%
-         Abundance > 0.01) %>%   
-  nest(data = c(year, clade, Abundance))
-
-maxmin <- fluc %>%
-  mutate(cladecount = map(data, ~ count(., clade)),
-         maxclade = map_chr(cladecount, ~ .$clade[which.max(.$n)]),
-         minclade = map_chr(cladecount, ~ .$clade[which.min(.$n)]))
-maxmin %>%
-  count(maxclade, minclade) %>%
-  arrange(maxclade, minclade)
-
-# did presence of multiple clades vary by dominant clade?
-test <- clades %>%
-  nest(data = c(year, A, B, C, D)) %>%
-  mutate(sums = map(data, ~ colSums(.[2:5])),
-         dom = map_chr(sums, ~ names(which.max(.))),
-         bk = map(sums, ~ setdiff(names(which(. > 0.01)), names(which.max(.)))))
-
-test2 <- test %>%
-  select(gspp, host_site, host_id, dom, bk) %>%
-  unnest(bk) %>%
-  right_join(select(test, gspp, host_site, host_id, dom)) %>%
-  mutate(bk = case_when(is.na(bk) ~ "none", TRUE ~ bk)) %>%
-  pivot_wider(names_from = "bk", values_from = "bk") %>%
-  mutate(across(c("B", "D", "C", "A", "none"), ~!is.na(.)))
-
-
-mod <- glmer(D ~ dom + (1|gspp) + (1|host_site), data = filter(test2, dom != "D"), family = "binomial")
-anova(mod)
-plot(emmeans(mod, specs = "dom", type = "response"))
-
-test3 <- test %>%
-  select(gspp, host_site, host_id, dom, bk) %>%
-  unnest(bk) %>%
-  right_join(select(test, gspp, host_site, host_id, dom)) %>%
-  mutate(bk = case_when(is.na(bk) ~ "none", TRUE ~ bk))
-
-dombk <- test3 %>%
-  group_by(dom) %>%
-  count(bk) %>%
-  pivot_wider(names_from = bk, values_from = n, values_fill = 0) %>%
-  ungroup()
-hi<-dombk %>%
-  select(-dom) %>%
-  as.matrix()
-chisq.test(hi)
-dombk %>% select(dom, A, B, C, D, none)
-
-
-
-gsppbk <- test3 %>%
-  group_by(gspp) %>%
-  count(bk) %>%
-  pivot_wider(names_from = bk, values_from = n)
+# # did presence of multiple clades vary by coral species?
+# mod <- glmer(mult.1 ~ gspp + (1|host_id) + (1|host_site), data = mult, family = "binomial")
+# car::Anova(mod)
+# anova(mod)
+# plot(emmeans(mod, specs = "gspp", type = "response"))
+# 
+# 
+# # how many colonies had a change in the number of clades over time?
+# nnclades <- nclades %>%
+#   group_by(gspp, host_site, host_id) %>%
+#   filter(n() > 1) %>%    # only include colonies sampled more than once over time
+#   summarize(nnclades.0.1 = n_distinct(nclades.0.1),
+#             nnclades.1   = n_distinct(nclades.1),
+#             nnclades.10  = n_distinct(nclades.10))
+# table(nnclades$nnclades.0.1 > 1) # 32/56 (57%) colonies had a change in the number of clades > 0.1% abund
+# table(nnclades$nnclades.1 > 1) # 27/56 (48%) colonies had a change in the number of clades > 1% abund
+# nnclades %>% filter(nnclades.1 > 1) %>% ungroup() %>% count(gspp)
+# table(nnclades$nnclades.10 > 1) # 8/56 (14%) colonies had a change in the number of clades > 10% abund
+# 
+# # did change in number of clades vary by coral species?   NO EFFECT, NOT MUCH STATISTICAL POWER
+# df <- nnclades %>%
+#   mutate(nnclades.0.1 = nnclades.0.1 > 1)
+# mod <- glmer(nnclades.0.1 ~ gspp + (1|host_id) + (1|host_site), data = df, family = "binomial")
+# car::Anova(mod)
+# anova(mod)
+# plot(emmeans(mod, specs = "gspp", type = "response"))
+# 
+# ggplot(nclades, aes(x = year, y = nclades.0.1)) +
+#   geom_jitter(width = 0.1, height = 0.1, alpha = 0.5) +
+#   facet_wrap(~ gspp)
+# 
+# # Model number of clades over time -- filter out Pfur since only one colony sampled over time
+# df <- filter(nclades, gspp != "Pfur") %>%
+#   mutate(year = factor(year))
+# mod <- lmerTest::lmer(nclades.0.1 ~ year * gspp + (1|host_site) + (1|host_id), data = df)
+# hist(residuals(mod))
+# car::Anova(mod)
+# emm <- emmeans(mod, c("year", "gspp"))
+# 
+# # some evidence for decreasing number of clades per colony over time?
+# as_tibble(emm) %>%
+#   ggplot(aes(x = year, y = emmean, color = gspp, group = gspp)) +
+#   geom_line()
+# 
+# contrast(emmeans(mod, "year"), "pairwise")
+# 
+# 
+# # which background clades are fluctuating?
+# fluc <- clades %>%
+#   pivot_longer(cols = c(A, B, C, D), names_to = "clade", values_to = "Abundance") %>%
+#   filter(host_id %in% nnclades$host_id[nnclades$nnclades.1 > 1],     # select colonies with changing # clades > 1%
+#          Abundance > 0.01) %>%   
+#   nest(data = c(year, clade, Abundance))
+# 
+# maxmin <- fluc %>%
+#   mutate(cladecount = map(data, ~ count(., clade)),
+#          maxclade = map_chr(cladecount, ~ .$clade[which.max(.$n)]),
+#          minclade = map_chr(cladecount, ~ .$clade[which.min(.$n)]))
+# maxmin %>%
+#   count(maxclade, minclade) %>%
+#   arrange(maxclade, minclade)
+# 
+# # did presence of multiple clades vary by dominant clade?
+# test <- clades %>%
+#   nest(data = c(year, A, B, C, D)) %>%
+#   mutate(sums = map(data, ~ colSums(.[2:5])),
+#          dom = map_chr(sums, ~ names(which.max(.))),
+#          bk = map(sums, ~ setdiff(names(which(. > 0.01)), names(which.max(.)))))
+# 
+# test2 <- test %>%
+#   select(gspp, host_site, host_id, dom, bk) %>%
+#   unnest(bk) %>%
+#   right_join(select(test, gspp, host_site, host_id, dom)) %>%
+#   mutate(bk = case_when(is.na(bk) ~ "none", TRUE ~ bk)) %>%
+#   pivot_wider(names_from = "bk", values_from = "bk") %>%
+#   mutate(across(c("B", "D", "C", "A", "none"), ~!is.na(.)))
+# 
+# 
+# mod <- glmer(D ~ dom + (1|gspp) + (1|host_site), data = filter(test2, dom != "D"), family = "binomial")
+# anova(mod)
+# plot(emmeans(mod, specs = "dom", type = "response"))
+# 
+# test3 <- test %>%
+#   select(gspp, host_site, host_id, dom, bk) %>%
+#   unnest(bk) %>%
+#   right_join(select(test, gspp, host_site, host_id, dom)) %>%
+#   mutate(bk = case_when(is.na(bk) ~ "none", TRUE ~ bk))
+# 
+# dombk <- test3 %>%
+#   group_by(dom) %>%
+#   count(bk) %>%
+#   pivot_wider(names_from = bk, values_from = n, values_fill = 0) %>%
+#   ungroup()
+# hi<-dombk %>%
+#   select(-dom) %>%
+#   as.matrix()
+# chisq.test(hi)
+# dombk %>% select(dom, A, B, C, D, none)
+# 
+# 
+# 
+# gsppbk <- test3 %>%
+#   group_by(gspp) %>%
+#   count(bk) %>%
+#   pivot_wider(names_from = bk, values_from = n)
 ```
 
-```{r nmds}
+```{r nmds_Fig2}
 samples_clades <- vmdf %>%
   # Get clade level relative abundances
   group_by(Sample, gspp, host_site, host_id, year, clade) %>%
@@ -809,63 +767,63 @@ clade_nmds <- bind_rows(
   guides(shape = guide_legend(ncol = 9))
 
 clade_nmds
-ggsave(clade_nmds, filename = "Output/clade_nmds.png", width = 183, height = 60, units = "mm")
+ggsave(clade_nmds, filename = "Output/Figure2.png", width = 183, height = 60, units = "mm")
 
-# bigfig <- plot_grid(fig1, clade_nmds, nrow = 2, labels = "AUTO", rel_heights = c(0.55, 0.45))
-# ggsave(bigfig, filename = "Output/bigfig.png", width = 183, height = 120, units = "mm")
-
-# LOOK AT ALL CORALS?
-# Run NMDS for visualization
-set.seed(55)
-var.nmds <- ordinate(variants, "NMDS", "bray")
-var.nmds.s <- plot_ordination(variants, var.nmds, type="samples")
-# Plot NMDS
-allnmds <- as_tibble(var.nmds.s$data) %>%
-  arrange(host_id, year) %>%
-  ggplot(aes(x = NMDS1, y = NMDS2, shape = host_species, color = host_species)) +
-  geom_point(alpha = 0.5, size = 2) +
-  geom_path(aes(group = host_id), arrow = arrow(ends = "last", length = unit(1, "mm"))) +
-  scale_shape_manual(values = 1:9) +
-  theme_custom()
-
-hull_data <- as_tibble(var.nmds.s$data) %>%
-  group_by(host_species) %>% 
-  slice(chull(NMDS1, NMDS2))
-as_tibble(var.nmds.s$data) %>%
-  arrange(host_id, year) %>%
-  ggplot(aes(x = NMDS1, y = NMDS2, shape = host_species, 
-             color = host_species, fill = host_species)) +
-  geom_point(alpha = 0.5, size = 2) +
-  scale_shape_manual(values = 1:9) +
-  theme_custom() +
-  geom_polygon(aes(group = host_species, fill = host_species),
-               data = hull_data, alpha = 0.3, linewidth = 0)# +
-  #stat_density_2d(geom = "polygon", alpha = 0.05, lwd = 0, binwidth = 0.5)
-
-set.seed(55)
-as_tibble(var.nmds.s$data) %>%
-  arrange(host_id, year) %>%
-  ggplot(aes(x = NMDS1, y = NMDS2)) +
-  geom_point(aes(shape = year, color = year)) +
-  geom_path(aes(group = host_id), alpha = 0.5, arrow = arrow(ends = "last", length = unit(2, "mm"))) +
-  facet_wrap(~host_species, scales = "fixed") +
-  theme_custom()
-  # coord_fixed(xlim = c(-1, 1), ylim = c(-1, 1))
-
-as_tibble(var.nmds.s$data) %>%
-  group_by(host_id) %>%
-  filter(any(year == "2017")) %>%
-  mutate(NMDS1adj = NMDS1 - NMDS1[year == "2017"],
-         NMDS2adj = NMDS2 - NMDS2[year == "2017"]) %>%
-  ungroup() %>%
-  arrange(host_id, year) %>%
-  ggplot(aes(x = NMDS1adj, y = NMDS2adj)) +
-  geom_point(aes(shape = year, color = year)) +
-  geom_path(aes(group = host_id), alpha = 0.5, arrow = arrow(ends = "last", length = unit(2, "mm"))) +
-  facet_wrap(~host_species) +
-  scale_x_continuous(limits = c(-0.7, 0.7)) +
-  scale_y_continuous(limits = c(-0.7, 0.7)) +
-  theme_custom()
+# # bigfig <- plot_grid(fig1, clade_nmds, nrow = 2, labels = "AUTO", rel_heights = c(0.55, 0.45))
+# # ggsave(bigfig, filename = "Output/bigfig.png", width = 183, height = 120, units = "mm")
+# 
+# # LOOK AT ALL CORALS?
+# # Run NMDS for visualization
+# set.seed(55)
+# var.nmds <- ordinate(variants, "NMDS", "bray")
+# var.nmds.s <- plot_ordination(variants, var.nmds, type="samples")
+# # Plot NMDS
+# allnmds <- as_tibble(var.nmds.s$data) %>%
+#   arrange(host_id, year) %>%
+#   ggplot(aes(x = NMDS1, y = NMDS2, shape = host_species, color = host_species)) +
+#   geom_point(alpha = 0.5, size = 2) +
+#   geom_path(aes(group = host_id), arrow = arrow(ends = "last", length = unit(1, "mm"))) +
+#   scale_shape_manual(values = 1:9) +
+#   theme_custom()
+# 
+# hull_data <- as_tibble(var.nmds.s$data) %>%
+#   group_by(host_species) %>% 
+#   slice(chull(NMDS1, NMDS2))
+# as_tibble(var.nmds.s$data) %>%
+#   arrange(host_id, year) %>%
+#   ggplot(aes(x = NMDS1, y = NMDS2, shape = host_species, 
+#              color = host_species, fill = host_species)) +
+#   geom_point(alpha = 0.5, size = 2) +
+#   scale_shape_manual(values = 1:9) +
+#   theme_custom() +
+#   geom_polygon(aes(group = host_species, fill = host_species),
+#                data = hull_data, alpha = 0.3, linewidth = 0)# +
+#   #stat_density_2d(geom = "polygon", alpha = 0.05, lwd = 0, binwidth = 0.5)
+# 
+# set.seed(55)
+# as_tibble(var.nmds.s$data) %>%
+#   arrange(host_id, year) %>%
+#   ggplot(aes(x = NMDS1, y = NMDS2)) +
+#   geom_point(aes(shape = year, color = year)) +
+#   geom_path(aes(group = host_id), alpha = 0.5, arrow = arrow(ends = "last", length = unit(2, "mm"))) +
+#   facet_wrap(~host_species, scales = "fixed") +
+#   theme_custom()
+#   # coord_fixed(xlim = c(-1, 1), ylim = c(-1, 1))
+# 
+# as_tibble(var.nmds.s$data) %>%
+#   group_by(host_id) %>%
+#   filter(any(year == "2017")) %>%
+#   mutate(NMDS1adj = NMDS1 - NMDS1[year == "2017"],
+#          NMDS2adj = NMDS2 - NMDS2[year == "2017"]) %>%
+#   ungroup() %>%
+#   arrange(host_id, year) %>%
+#   ggplot(aes(x = NMDS1adj, y = NMDS2adj)) +
+#   geom_point(aes(shape = year, color = year)) +
+#   geom_path(aes(group = host_id), alpha = 0.5, arrow = arrow(ends = "last", length = unit(2, "mm"))) +
+#   facet_wrap(~host_species) +
+#   scale_x_continuous(limits = c(-0.7, 0.7)) +
+#   scale_y_continuous(limits = c(-0.7, 0.7)) +
+#   theme_custom()
 
 
 
@@ -967,70 +925,89 @@ plot_bar(pfur, x = "sample_name", fill = "clade") + facet_wrap(~host_site, scale
 ### Bray-Curtis diffs within colonies over time
 ```{r}
 # How does B-C dissim change from 2017--2018--2019?
-varr <- transform_sample_counts(variants, function(x) sqrt(x/sum(x)))     # Square-root transform
+#varr <- transform_sample_counts(variants, function(x) x/sum(x))     # Square-root transform
 
 # Bray-Curtis distance matrix
-bd <- as.matrix(distance(varr, "bray"))
-xy <- t(combn(colnames(bd), 2))
-sc <- as_tibble(data.frame(xy, dist=bd[xy])) %>%
-  separate(X1, into = c("site1", "species1", "host_id1", "year1")) %>%
-  separate(X2, into = c("site2", "species2", "host_id2", "year2")) %>%
-  filter(host_id1 == host_id2)
+# bd <- as.matrix(distance(varr, "bray"))
+# xy <- t(combn(colnames(bd), 2))
+# sc <- as_tibble(data.frame(xy, dist=bd[xy])) %>%
+#   separate(X1, into = c("site1", "species1", "host_id1", "year1")) %>%
+#   separate(X2, into = c("site2", "species2", "host_id2", "year2")) %>%
+#   filter(host_id1 == host_id2)
 
-sc4 <- sc %>%
-  mutate(yearx = if_else(year1 < year2, year1, year2),
-         yeary = if_else(year1 < year2, year2, year1)) %>%
-  select(host_id = host_id1, host_species = species1,
-         year1 = yearx, year2 = yeary, dist) %>%
-  filter(year1 == 2017) %>%
-  mutate(year2 = as_factor(year2))
+# sc4 <- sc %>%
+#   mutate(yearx = if_else(year1 < year2, year1, year2),
+#          yeary = if_else(year1 < year2, year2, year1)) %>%
+#   select(host_id = host_id1, host_species = species1,
+#          year1 = yearx, year2 = yeary, dist) %>%
+#   filter(year1 == 2017) %>%
+#   mutate(year2 = as_factor(year2))
+# 
+# mod <- lmer(log(dist) ~ year2 * host_species + (1|host_id), 
+#             data = filter(sc4, host_species != "Pfur"))
+# hist(residuals(mod))
+# shapiro.test(residuals(mod))
+# car::Anova(mod)
+# emm <- emmeans(mod, specs = c("year2", "host_species"), type = "response")
+# contrast(emm, "pairwise", by = "host_species")
+# contrast(emm, "pairwise", by = "year2", adjust = "none")
+# 
+# 
+# f2 <- as_tibble(emm) %>%
+#   mutate(emmean = response) %>%
+#   full_join(tibble(year2 = "2017", distinct(sc4, host_species), emmean = 0)) %>%
+#   mutate(host_species = factor(host_species, levels = c("Mcav", "Ssid", "Oann",
+#                                                         "Dlab", "Ofra", "Cnat",
+#                                                         "Pstr", "Pfur", "Ofav"))) %>%
+#   ggplot(aes(x = year2, y = emmean, color = host_species, group = host_species)) + 
+#   geom_point(position = position_dodge(width = 0.3)) +
+#   geom_errorbar(aes(ymin = emmean - SE, ymax = emmean + SE), 
+#                 position = position_dodge(width = 0.3), width = 0.1) +
+#   geom_line(position = position_dodge(width = 0.3)) +
+#   theme_custom() +
+#   labs(x = "", y = "Bray-Curtis dissimilarity") +
+#   theme(legend.text = element_text(face = 'italic'),
+#         legend.key.size = unit(2, "mm"),
+#         legend.position = c(0.2, 0.85),
+#         legend.spacing.y = unit(0.05, "mm")) +
+#   guides(color = guide_legend(byrow = TRUE)) +
+#   scale_color_discrete(labels = c("M. cavernosa", "S. siderea", "O. annularis", "D. labyrinthiformis",
+#                                   "O. franksi", "C. natans", "P. strigosa", "P. furcata", "O. faveolata"),
+#                        name = "")
+# 
+# ggsave(f2, filename = "Output/Figure2.png", width = 85, height = 85, units = "mm")
 
-mod <- lmer(log(dist) ~ year2 * host_species + (1|host_id), 
-            data = filter(sc4, host_species != "Pfur"))
-hist(residuals(mod))
-shapiro.test(residuals(mod))
-car::Anova(mod)
-emm <- emmeans(mod, specs = c("year2", "host_species"), type = "response")
-contrast(emm, "pairwise", by = "host_species")
-contrast(emm, "pairwise", by = "year2", adjust = "none")
+#variants_nopfur <- subset_samples(variants, host_species != "furcata")
 
 
-f2 <- as_tibble(emm) %>%
-  mutate(emmean = response) %>%
-  full_join(tibble(year2 = "2017", distinct(sc4, host_species), emmean = 0)) %>%
-  mutate(host_species = factor(host_species, levels = c("Mcav", "Ssid", "Oann",
-                                                        "Dlab", "Ofra", "Cnat",
-                                                        "Pstr", "Pfur", "Ofav"))) %>%
-  ggplot(aes(x = year2, y = emmean, color = host_species, group = host_species)) + 
-  geom_point(position = position_dodge(width = 0.3)) +
-  geom_errorbar(aes(ymin = emmean - SE, ymax = emmean + SE), 
-                position = position_dodge(width = 0.3), width = 0.1) +
-  geom_line(position = position_dodge(width = 0.3)) +
-  theme_custom() +
-  labs(x = "", y = "Bray-Curtis dissimilarity") +
-  theme(legend.text = element_text(face = 'italic'),
-        legend.key.size = unit(2, "mm"),
-        legend.position = c(0.2, 0.85),
-        legend.spacing.y = unit(0.05, "mm")) +
-  guides(color = guide_legend(byrow = TRUE)) +
-  scale_color_discrete(labels = c("M. cavernosa", "S. siderea", "O. annularis", "D. labyrinthiformis",
-                                  "O. franksi", "C. natans", "P. strigosa", "P. furcata", "O. faveolata"),
-                       name = "")
 
-ggsave(f2, filename = "Output/Figure2.png", width = 85, height = 85, units = "mm")
-
-
-set.seed(55)
+varr <- transform_sample_counts(variants, function(x) sqrt(x/sum(x))) 
+#set.seed(55)
+set.seed(56)
 varr.nmds <- ordinate(varr, "NMDS", "bray")
 varr.nmds.s <- plot_ordination(varr, varr.nmds, type="samples")
-as_tibble(varr.nmds.s$data) %>%
+
+nmds_fig <- as_tibble(varr.nmds.s$data) %>%
+  mutate(gspp = factor(paste0(str_sub(host_genus, 1, 1), str_sub(host_species, 1, 3)))) %>%
   arrange(host_id, year) %>%
   ggplot(aes(x = NMDS1, y = NMDS2)) +
-  geom_point(aes(shape = year, color = year)) +
-  geom_path(aes(group = host_id), alpha = 0.5, arrow = arrow(ends = "last", length = unit(2, "mm"))) +
-  facet_wrap(~host_species) +
-  theme_custom()
+  geom_point(aes(shape = year, color = year), alpha = 0.6) +
+  geom_path(aes(group = host_id), alpha = 0.5, arrow = arrow(ends = "last", length = unit(1, "mm")), lwd = 0.25) +
+  facet_wrap(~gspp, labeller = global_labeller) +
+  scale_color_manual(values = c('#66c2a5','#fc8d62','#8da0cb')) +
+  theme_custom() +
+  theme(strip.background = element_blank(),
+          strip.text = element_text(face = "italic"),
+          text = element_text(size = 7), legend.text = element_text(size = 4),
+          axis.text.x = element_text(hjust = 0)) +
+  theme(legend.position = "none"); nmds_fig
 
+ggsave(nmds_fig, filename = "Output/Figure3.png", width = 85, height = 85, units = "mm")
+
+
+
+
+# include as supplementary?
 as_tibble(varr.nmds.s$data) %>%
   group_by(host_id) %>%
   filter(any(year == "2017")) %>%
@@ -1073,9 +1050,9 @@ brayord <- bd2 %>%
   mutate(gspp = as_factor(species1))
   
 source("https://raw.githubusercontent.com/datavizpyr/data/master/half_flat_violinplot.R")
-f3 <- bd2 %>% mutate(gspp = factor(species1, levels = levels(brayord$gspp))) %>%
+f4 <- bd2 %>% mutate(gspp = factor(species1, levels = levels(brayord$gspp))) %>%
   ggplot(aes(x = group, y = dist)) +
-    facet_grid(~ gspp, labeller = global_labeller) +
+    facet_wrap(~ gspp, nrow = 2, labeller = global_labeller) +
     geom_flat_violin(adjust = 1, position = position_nudge(x = 0.15), scale = "width",
                      lwd = 0, fill = "grey72") +
     geom_boxplot(width = 0.1, outlier.shape = NA, lwd = 0.2,
@@ -1088,9 +1065,9 @@ f3 <- bd2 %>% mutate(gspp = factor(species1, levels = levels(brayord$gspp))) %>%
           axis.ticks.x = element_blank(),
           axis.text.x = element_text(hjust = 0)) +
     labs(y = "Bray-Curtis Dissimilarity", x = "") +
-    coord_cartesian(xlim = c(1.3, 2.1))
+    coord_cartesian(xlim = c(1.3, 2.1)); f4
 
-ggsave(f3, filename = "Output/Figure3.png", width = 183, height = 40, units = "mm")
+ggsave(f4, filename = "Output/Figure4.png", width = 102, height = 80, units = "mm")
 
 bd2 %>%
   group_by(species1, group) %>%
