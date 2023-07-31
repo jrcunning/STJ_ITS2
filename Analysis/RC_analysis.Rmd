@@ -512,7 +512,7 @@ ggsave(fig1, filename = "Output/Figure1.png", width = 183, height = 70, units = 
 ```
 
 
-
+# Summary of number of corals that changed dominant symbiont genera or profiles, or number of genera
 ```{r, }
 # which profiles in which species?
 favi <- pmdf %>%
@@ -540,6 +540,59 @@ favi %>%
 # pmdf %>% filter(its2_type_profile == "B19/B5af-B19e-B19c-B5ag-B19d-B19f-B40a-B19h")
 ```
 
+```{r}
+# how many diff dom profiles in each species?
+pmdf %>%
+  filter(Abundance > 0.5) %>%
+  group_by(host_species) %>%
+  distinct(its2_type_profile)
+
+pmdf %>%
+  filter(Abundance > 0.5) %>%
+  group_by(host_species) %>%
+  summarize(n_colonies = n_distinct(host_id),
+            n_domprof = n_distinct(its2_type_profile)) %>%
+  arrange(n_domprof / n_colonies)
+
+pmdf %>%
+  filter(Abundance > 0.5) %>%
+  group_by(host_species, its2_type_profile) %>%
+  summarize(cols = paste0(unique(host_id), collapse = ",")) %>%
+  print(n = nrow(.))
+
+
+###### NETWORKS of dom profiles
+library(igraph)
+#only one connection per unique colony
+df2 <- as_tibble(pmdf) %>%
+  filter(Abundance > 0.5) %>%
+  select(its2_type_profile, host_species, host_id, year) %>%
+  distinct(its2_type_profile, host_species, host_id)
+
+net <- graph_from_data_frame(df2, directed = FALSE)
+
+V(net)$type <- if_else(V(net)$name %in% unique(pmdf$host_species), "coral", "sym")
+V(net)$clade <- if_else(V(net)$type == "sym", str_sub(V(net)$name, 1, 1), NA_character_)
+V(net)$shape <- c("square", "circle")[factor(V(net)$type)]
+taxcolors <- matrix(c("#f2f2f2", "#ccebc5", "#b3cde3", "#fbb4ae"), 
+                    dimnames=list(c("A", "B", "C", "D")))
+V(net)$color <- if_else(is.na(V(net)$clade), "white", taxcolors[factor(V(net)$clade, levels=c("A","B","C","D","G"))])
+ 
+
+V(net)$label <- sapply(V(net)$name, function(x) paste0(stri_wrap(str = x, width = 12, whitespace_only = FALSE),
+          collapse = "\n"))
+V(net)$label[29:37] <- c("Cnat", "Dlab", "Mcav", "Oann", "Ofav", "Ofra", "Pfur", "Pstr", "Ssid")
+V(net)$label.cex = if_else(V(net)$type == "coral", 1, 0.5)
+V(net)$label.color = "black"
+V(net)$size = if_else(V(net)$type == "coral", 15, 25)
+
+
+set.seed(27)
+test.layout <- layout_(net, with_dh(weight.edge.lengths = edge_density(net)/100000))
+plot(net, layout = test.layout)
+
+
+```
 
 ```{r, dom_bk_etc}
 # Changes in dominant genus
@@ -595,6 +648,7 @@ table(mult$mult.10) # 11/70 (16%) colonies had multiple clades > 10% abund
 
 ```
 
+# NMDS comparing hosts for each symbiont genus
 ```{r nmds_Fig2}
 samples_clades <- vmdf %>%
   # Get clade level relative abundances
@@ -665,7 +719,8 @@ clade_nmds <- bind_rows(
 clade_nmds
 ggsave(clade_nmds, filename = "Output/Figure2.png", width = 183, height = 60, units = "mm")
 
-
+clade_nmds +
+  geom_point(aes(x = ))
 
 
 as_tibble(varB.nmds.s$data) %>%
@@ -703,12 +758,92 @@ pmdf2 %>% filter(host_species == "natans", clade == "B", Abundance > 0)
 pmdf2 %>% filter(grepl("B5af", its2_type_profile), Abundance > 0)
 pmdf2 %>% filter(host_species == "strigosa", clade == "B", Abundance > 0)
 pmdf2 %>% filter(grepl("B1x", its2_type_profile), Abundance > 0)
+
+pmdf2 %>% filter(host_species == "franksi", clade == "B", Abundance > 0.05)
+pmdf2 %>% filter(host_species == "siderea", clade == "B", Abundance > 0.05)
+pmdf2 %>% filter(its2_type_profile == "B1-B1x-B1t-B14b-B1af-B1ae-B1ag", Abundance > 0.05)
+pmdf2 %>% filter(its2_type_profile == "B19/B5af-B19e-B19c-B5ag-B19d-B19f-B40a-B19h", Abundance > 0.05)
+pmdf2 %>% filter(its2_type_profile == "B1-B1z-B1aa-B1ad-B1ac-B1ab", Abundance > 0.05)
 ```
 
-# Stats to compare species and sites
+# Stats to compare symbionts within genus across hosts
+```{r}
+devtools::install_github("pmartinezarbizu/pairwiseAdonis/pairwiseAdonis")
+
+# Pairwise PERMANOVAs to test if the Breviolum sequence variants differ among host species
+
+# Symbiodinium
+Amod <- pairwiseAdonis::pairwise.adonis(distance(varA, "bray"), 
+                                        as_tibble(sample_data(varA))$host_species,
+                                        p.adjust.m = "bonferroni")
+Amod
+
+Amod <- Amod %>%
+  separate(col = pairs, into = c("var1", "var2"), sep = " vs ")
+
+Amod %>%
+  bind_rows(Amod %>% rename(var1 = var2, var2 = var1)) %>%
+  full_join(expand_grid(var1 = unique(as_tibble(sample_data(varA))$host_species), 
+                        var2 = unique(as_tibble(sample_data(varA))$host_species))) %>%
+  mutate(p.sig = case_when(p.adjusted < 0.05 ~ p.adjusted, TRUE ~ NA_real_)) %>%
+  ggplot(aes(x = var1, y = var2)) +
+  geom_tile(col = "black", aes(fill = log10(p.adjusted))) +
+  geom_text(aes(label = sig), fontface = "bold", size = 5) +
+  scale_fill_gradient(low = "red", high = "white")
+
+
+# Breviolum
+Bmod <- pairwiseAdonis::pairwise.adonis(distance(varB, "bray"), 
+                                        as_tibble(sample_data(varB))$host_species,
+                                        p.adjust.m = "fdr")
+Bmod
+
+Bmod <- Bmod %>%
+  separate(col = pairs, into = c("var1", "var2"), sep = " vs ")
+
+Bmod %>%
+  bind_rows(Bmod %>% rename(var1 = var2, var2 = var1)) %>%
+  full_join(expand_grid(var1 = unique(as_tibble(sample_data(varB))$host_species), 
+                        var2 = unique(as_tibble(sample_data(varB))$host_species))) %>%
+  mutate(p.sig = case_when(p.adjusted < 0.05 ~ p.adjusted, TRUE ~ NA_real_)) %>%
+  ggplot(aes(x = var1, y = var2)) +
+  geom_tile(col = "black", aes(fill = log10(p.adjusted))) +
+  geom_text(aes(label = sig), fontface = "bold", size = 5) +
+  scale_fill_gradient(low = "red", high = "white")
+
+# Cladocopium
+as_tibble(sample_data(varC)) %>% count(host_species)
+Cmod <- pairwiseAdonis::pairwise.adonis(distance(varC, "bray"), 
+                                        as_tibble(sample_data(varC))$host_species,
+                                        p.adjust.m = "fdr")
+Cmod
+
+Cmod <- Cmod %>%
+  separate(col = pairs, into = c("var1", "var2"), sep = " vs ")
+
+Cmod %>%
+  bind_rows(Cmod %>% rename(var1 = var2, var2 = var1)) %>%
+  full_join(expand_grid(var1 = unique(as_tibble(sample_data(varC))$host_species), 
+                        var2 = unique(as_tibble(sample_data(varC))$host_species))) %>%
+  mutate(p.sig = case_when(p.adjusted < 0.05 ~ p.adjusted, TRUE ~ NA_real_)) %>%
+  ggplot(aes(x = var1, y = var2)) +
+  geom_tile(col = "black", aes(fill = log10(p.adjusted))) +
+  geom_text(aes(label = sig), fontface = "bold", size = 5) +
+  scale_fill_gradient(low = "red", high = "white")
+
+
+# Durusdinium
+as_tibble(sample_data(varD)) %>% count(host_species)
+Dmod <- pairwiseAdonis::pairwise.adonis(distance(varD, "bray"), 
+                                        as_tibble(sample_data(varD))$host_species,
+                                        p.adjust.m = "fdr")
+Dmod
+```
+
+# Stats to compare sites for each species
 ```{r}
 ## PERMANOVAs...
-varr <- transform_sample_counts(variants, function(x) sqrt(x/sum(x)))  
+varr <- transform_sample_counts(variants, function(x) x/sum(x)) 
 
 
 cnat <- subset_samples(varr, host_species == "natans")
@@ -773,7 +908,7 @@ nmds_fig <- as_tibble(varr.nmds.s$data) %>%
           strip.text = element_text(face = "italic"),
           text = element_text(size = 7), legend.text = element_text(size = 4),
           axis.text.x = element_text(hjust = 0)) +
-  theme(legend.position = "none"); nmds_fig
+  theme(legend.position = c(0.1, 0.1)); nmds_fig
 
 ggsave(nmds_fig, filename = "Output/Figure3.png", width = 85, height = 85, units = "mm")
 
@@ -834,13 +969,12 @@ f4 <- bd2 %>% mutate(gspp = factor(species1, levels = levels(brayord$gspp))) %>%
     theme_custom() +
     theme(strip.background = element_blank(),
           strip.text = element_text(face = "italic"),
-          text = element_text(size = 7), legend.text = element_text(size = 4),
-          axis.ticks.x = element_blank(),
+          text = element_text(size = 7), legend.text = element_text(size = 4),,
           axis.text.x = element_text(hjust = 0)) +
     labs(y = "Bray-Curtis Dissimilarity", x = "") +
     coord_cartesian(xlim = c(1.3, 2.1)); f4
 
-ggsave(f4, filename = "Output/Figure4.png", width = 102, height = 80, units = "mm")
+ggsave(f4, filename = "Output/Figure4.png", width = 102, height = 70, units = "mm")
 
 bd2 %>%
   group_by(species1, group) %>%
@@ -852,725 +986,3 @@ bd2 %>%
 
 ```
 
-
-
-# 3. Ecological data from Pete
-```{r}
-# genus level dataset
-ecodat <- readxl::read_xls("Data/STJ_corals_genus.xls") %>%
-  clean_names()
-
-ecomd <- ecodat %>% select(1:5)
-ecocomp <- ecodat %>% select(9:ncol(ecodat))
-
-ecolong <- ecodat %>%
-  pivot_longer(cols = 6:ncol(ecodat), names_to = "tax")
-
-mod <- lmer(log(value+0.001) ~ tax * factor(year) + (1|quadrat/site), data = ecolong)
-car::Anova(mod)
-
-as_tibble(emmeans(mod, specs = c("year", "tax"))) %>%
-  filter(tax %in% c("orbicella", "diploria", "montastraea", "montastrea_cav", "colpophyllia", "siderastrea")) %>%
-  ggplot(aes(x = year, y = emmean, color = tax, group = tax)) +
-  geom_point() +
-  geom_line()
-  
-# species level dataset
-coralspp <- readxl::read_xls("Data/STJ_corals_species.xls", skip = 2) %>%
-  clean_names()
-
-sppmd <- coralspp %>% select(1:5)
-sppcomp <- coralspp %>% select(9:ncol(coralspp))
-
-spplong <- coralspp %>%
-  pivot_longer(cols = 6:ncol(coralspp), names_to = "tax")
-
-mod <- lmer(log(value+0.001) ~ tax * factor(year) + (1|quadrat/site), data = spplong)
-car::Anova(mod)
-
-as_tibble(emmeans(mod, specs = c("year", "tax"))) %>%
-  filter(tax %in% c("percent_orbicella_annularis", "percent_orbicella_faveolata",
-                    "diploria_labrynthiformes", "percent_orbicealla_franksi",
-                    "percent_montastraea_cavernosa", "percent_pseudodiploria_strigosa", 
-                    "percent_colpophyllia_natans", "percent_sidreastrea_siderea")) %>%
-  ggplot(aes(x = year, y = emmean, color = tax, group = tax)) +
-  geom_point() +
-  geom_line()
-```
-
-
-
-# Summary figures for each species
-
-The top row of bars shows all ITS2 sequence variants, while the bottom row of bars shows the associated ITS2 profiles. Legend refers to profiles only, not variants.
-
-### *Colpophyllia natans*
-```{r natans_summary, fig.width = 11}
-plot_both2(host_species == "natans")
-```
-
-*C. natans* colonies at Cabritte Horn and East Tektite were dominated by a few different *Breviolum* profiles, with low levels of *Cladocopium* and *Durusdinium* that fluctuated randomly over time. At White Point, one colony was dominated by *Cladocopium* and one by *Durusdinium*.
-
-```{r}
-# NMDS for C. natans
-cnat <- merge_phyloseq(tax_table(variants), otu_table(variants), 
-                       subset(sample_data(variants), host_species == "natans"))
-cnat <- prune_taxa(taxa_sums(cnat) != 0, cnat)
-cnatr = transform_sample_counts(cnat, function(x) x/sum(x))
-
-cnatdistmat <- vegan::vegdist(sqrt(otu_table(cnatr)), method = "bray")
-
-cnatdf <- as.data.frame(cmdscale(cnatdistmat, k = 2)) %>%
-  mutate(sample_name = rownames(.)) %>%
-  left_join(sample_data(cnat)) %>%
-  as_tibble() %>%
-  select(V1, V2, sample_name, host_id, year, host_site, collection_depth) %>%
-  arrange(host_id, year)
-
-ggplot(cnatdf, aes(x = V1, y = V2, color = host_id)) +
-  geom_point(aes(shape = year)) +
-  geom_path(aes(group = host_id), arrow = arrow(length = unit(0.1, "inches"), type = "open"))
-
-# Subset just the B-dom corals
-cnat <- merge_phyloseq(tax_table(variants), otu_table(variants), 
-                       subset(sample_data(variants), host_species == "natans" & 
-                                                     host_id %in% c("12", "5", "33", "35", "60", "61")))
-cnat <- prune_taxa(taxa_sums(cnat) != 0, cnat)
-cnatr = transform_sample_counts(cnat, function(x) x/sum(x))
-
-cnatdistmat <- vegan::vegdist(sqrt(otu_table(cnatr)), method = "bray")
-
-cnatdf <- as.data.frame(cmdscale(cnatdistmat, k = 2)) %>%
-  mutate(sample_name = rownames(.)) %>%
-  left_join(sample_data(cnat)) %>%
-  as_tibble() %>%
-  select(V1, V2, sample_name, host_id, year, host_site, collection_depth) %>%
-  arrange(host_id, year)
-
-ggplot(cnatdf, aes(x = V1, y = V2, color = host_id)) +
-  geom_point(aes(shape = year)) +
-  geom_path(aes(group = host_id), arrow = arrow(length = unit(0.1, "inches"), type = "open")) +
-  labs(title = "Just Breviolum-dominated C. natans")
-```
-
-### *Diploria labyrinithiformis*
-```{r labrynthiformis_summary, fig.width = 11}
-plot_both2(host_species == "labrynthiformis")
-```
-
-One colony at East Tektite (57) was dominated by *Cladocopium*, but otherwise *D. labyrinthiformis* was dominated by several distinct *Breviolum* profiles. These mostly remained the same over time within colonies, but changed for a few (colony 36, 37, 62). Will have to dig into these to see if these may be real changes or analytical artifacts. 
-
-```{r}
-# NMDS for D. lab
-dlab <- merge_phyloseq(tax_table(variants), otu_table(variants), 
-                       subset(sample_data(variants), host_species == "labrynthiformis"))
-dlab <- prune_taxa(taxa_sums(dlab) != 0, dlab)
-dlabr = transform_sample_counts(dlab, function(x) sqrt(x/sum(x)))
-
-dlabdistmat <- vegan::vegdist(sqrt(otu_table(dlabr)), method = "bray")
-
-dlabdf <- as.data.frame(cmdscale(dlabdistmat, k = 2)) %>%
-  mutate(sample_name = rownames(.)) %>%
-  left_join(sample_data(dlab)) %>%
-  as_tibble() %>%
-  select(V1, V2, sample_name, host_id, year, host_site, collection_depth) %>%
-  arrange(host_id, year)
-
-ggplot(dlabdf, aes(x = V1, y = V2, color = host_id)) +
-  geom_point(aes(shape = year)) +
-  geom_path(aes(group = host_id), arrow = arrow(length = unit(0.1, "inches"), type = "open"))
-
-# Just B-dom Dlab
-dlab <- merge_phyloseq(tax_table(variants), otu_table(variants), 
-                       subset(sample_data(variants), host_species == "labrynthiformis" &
-                                                     host_id %in% c("13", "50", "36", "37", "62", "20", "23")))
-dlab <- prune_taxa(taxa_sums(dlab) != 0, dlab)
-dlabr = transform_sample_counts(dlab, function(x) x/sum(x))
-
-dlabdistmat <- vegan::vegdist(sqrt(otu_table(dlabr)), method = "bray")
-
-dlabdf <- as.data.frame(cmdscale(dlabdistmat, k = 2)) %>%
-  mutate(sample_name = rownames(.)) %>%
-  left_join(sample_data(dlab)) %>%
-  as_tibble() %>%
-  select(V1, V2, sample_name, host_id, year, host_site, collection_depth) %>%
-  arrange(host_id, year)
-
-ggplot(dlabdf, aes(x = V1, y = V2, color = host_id)) +
-  geom_point(aes(shape = year)) +
-  geom_path(aes(group = host_id), arrow = arrow(length = unit(0.1, "inches"), type = "open")) +
-  labs(title = "Just Breviolum-dominated D.lab.")
-```
-
-### *Porites furcata*
-```{r labrynthiformis_summary, fig.width = 11}
-plot_both2(host_species == "furcata")
-```
-
-```{r}
-# NMDS for P. fur
-pfur <- merge_phyloseq(tax_table(variants), otu_table(variants), 
-                       subset(sample_data(variants), host_species == "furcata"))
-pfur <- prune_taxa(taxa_sums(pfur) != 0, pfur)
-pfurr = transform_sample_counts(pfur, function(x) x/sum(x))
-
-pfurdistmat <- vegan::vegdist(sqrt(otu_table(pfurr)), method = "bray")
-
-pfurdf <- as.data.frame(cmdscale(pfurdistmat, k = 2)) %>%
-  mutate(sample_name = rownames(.)) %>%
-  left_join(sample_data(pfur)) %>%
-  as_tibble() %>%
-  select(V1, V2, sample_name, host_id, year, host_site, collection_depth) %>%
-  arrange(host_id, year)
-
-ggplot(pfurdf, aes(x = V1, y = V2, color = host_id)) +
-  geom_point(aes(shape = year)) +
-  geom_path(aes(group = host_id), arrow = arrow(length = unit(0.1, "inches"), type = "open"))
-```
-
-### *Montastraea cavernosa*
-```{r cavernosa_summary, fig.width = 11}
-plot_both2(host_species == "cavernosa")
-```
-
-*M. cavernosa* is dominated by a couple of different *Cladocopium* profiles with some background *Breviolum*. Two colonies at White Point have a distinct *Cladocopium* profile, but there doesn't appear to be any particular change over time.
-
-```{r}
-# NMDS for Mcav
-mcav <- merge_phyloseq(tax_table(variants), otu_table(variants), 
-                       subset(sample_data(variants), host_species == "cavernosa"))
-mcav <- prune_taxa(taxa_sums(mcav) != 0, mcav)
-mcavr = transform_sample_counts(mcav, function(x) sqrt(x/sum(x)))
-
-mcavdistmat <- vegan::vegdist(sqrt(otu_table(mcavr)), method = "bray")
-
-mcavdf <- as.data.frame(cmdscale(mcavdistmat, k = 2)) %>%
-  mutate(sample_name = rownames(.)) %>%
-  left_join(sample_data(mcav)) %>%
-  as_tibble() %>%
-  select(V1, V2, sample_name, host_id, year, host_site, collection_depth) %>%
-  arrange(host_id, year)
-
-ggplot(mcavdf, aes(x = V1, y = V2, color = host_id)) +
-  geom_point(aes(shape = year)) +
-  geom_path(aes(group = host_id), arrow = arrow(length = unit(0.1, "inches"), type = "open"))
-```
-
-### *Orbicella spp.*
-```{r orbicella_summary, fig.width = 11}
-plot_both2(host_genus == "Orbicella")
-```
-
-*Orbicella* colonies are sometimes dominated by *Symbiodinium*, *Breviolum*, and *Cladocopium*. Most stay the same over time, but some colonies (24 and 64, both at White Point), have mixtures of *Symbiodinium* and  *Cladocopium* in 2017, and then only *Cladocopium* in 2019. Another colony at White Point (17) appears to change between two *Cladocopium* profiles. At other sites, little evidence of change over time.
-
-```{r}
-# NMDS for Orbicella
-orb <- merge_phyloseq(tax_table(variants), otu_table(variants), 
-                       subset(sample_data(variants), host_genus == "Orbicella"))
-orb <- prune_taxa(taxa_sums(orb) != 0, orb)
-orbr = transform_sample_counts(orb, function(x) x/sum(x))
-
-orbdistmat <- vegan::vegdist(sqrt(otu_table(orbr)), method = "bray")
-
-orbdf <- as.data.frame(cmdscale(orbdistmat, k = 2)) %>%
-  mutate(sample_name = rownames(.)) %>%
-  left_join(sample_data(orb)) %>%
-  as_tibble() %>%
-  select(V1, V2, sample_name, host_id, year, host_site, host_species, collection_depth) %>%
-  arrange(host_id, year)
-
-ggplot(orbdf, aes(x = V1, y = V2, color = host_species)) +
-  geom_point(aes(shape = year)) +
-  geom_path(aes(group = host_id), arrow = arrow(length = unit(0.1, "inches"), type = "open"))
-
-
-# Just Orb that are Cdom the whole time
-orb <- merge_phyloseq(tax_table(variants), otu_table(variants), 
-                       subset(sample_data(variants), host_genus == "Orbicella" & 
-                                        host_id %in% c("3", "47", "56", "80", "81", "40", "18", "65", "67")))
-orb <- prune_taxa(taxa_sums(orb) != 0, orb)
-orbr = transform_sample_counts(orb, function(x) x/sum(x))
-
-orbdistmat <- vegan::vegdist(sqrt(otu_table(orbr)), method = "bray")
-
-orbdf <- as.data.frame(cmdscale(orbdistmat, k = 2)) %>%
-  mutate(sample_name = rownames(.)) %>%
-  left_join(sample_data(orb)) %>%
-  as_tibble() %>%
-  select(V1, V2, sample_name, host_id, year, host_site, host_species, collection_depth) %>%
-  arrange(host_id, year)
-
-ggplot(orbdf, aes(x = V1, y = V2, color = host_species)) +
-  geom_point(aes(shape = year)) +
-  geom_path(aes(group = host_id), arrow = arrow(length = unit(0.1, "inches"), type = "open")) +
-  labs(title = "Just Cladocopium-dominated Orbicella")
-
-# Orb that had multiple clades
-orb <- merge_phyloseq(tax_table(variants), otu_table(variants), 
-                       subset(sample_data(variants), host_genus == "Orbicella" & 
-                                        host_id %in% c("17", "24", "64")))
-orb <- prune_taxa(taxa_sums(orb) != 0, orb)
-orbr = transform_sample_counts(orb, function(x) x/sum(x))
-
-orbdistmat <- vegan::vegdist(sqrt(otu_table(orbr)), method = "bray")
-
-orbdf <- as.data.frame(cmdscale(orbdistmat, k = 2)) %>%
-  mutate(sample_name = rownames(.)) %>%
-  left_join(sample_data(orb)) %>%
-  as_tibble() %>%
-  select(V1, V2, sample_name, host_id, year, host_site, host_species, collection_depth) %>%
-  arrange(host_id, year)
-
-ggplot(orbdf, aes(x = V1, y = V2, color = host_species)) +
-  geom_point(aes(shape = year)) +
-  geom_path(aes(group = host_id), arrow = arrow(length = unit(0.1, "inches"), type = "open")) +
-  labs(title = "Orbicella that changed dominant clade")
-```
-
-### *Pseudodiploria strigosa*
-```{r strigosa_summary, fig.width = 11}
-plot_both2(host_species == "strigosa")
-```
-
-*P. strigosa* colonies contain mostly *Breviolum* profiles, with some evidences for changes among *Breviolum* types over time. Two colonies at East Tektite (45 and 54) are dominated by *Cladocopium*.
-
-```{r}
-# NMDS for Pstr
-pstr <- merge_phyloseq(tax_table(variants), otu_table(variants), 
-                       subset(sample_data(variants), host_species == "strigosa"))
-pstr <- prune_taxa(taxa_sums(pstr) != 0, pstr)
-pstrr = transform_sample_counts(pstr, function(x) x/sum(x))
-
-pstrdistmat <- vegan::vegdist(sqrt(otu_table(pstrr)), method = "bray")
-
-pstrdf <- as.data.frame(cmdscale(pstrdistmat, k = 2)) %>%
-  mutate(sample_name = rownames(.)) %>%
-  left_join(sample_data(pstr)) %>%
-  as_tibble() %>%
-  select(V1, V2, sample_name, host_id, year, host_site, collection_depth) %>%
-  arrange(host_id, year)
-
-ggplot(pstrdf, aes(x = V1, y = V2, color = host_id)) +
-  geom_point(aes(shape = year)) +
-  geom_path(aes(group = host_id), arrow = arrow(length = unit(0.1, "inches"), type = "open"))
-
-# Just Bdom Pstr
-pstr <- merge_phyloseq(tax_table(variants), otu_table(variants), 
-                       subset(sample_data(variants), host_species == "strigosa" & 
-                                host_id %in% c("10", "82", "42", "28", "66", "68")))
-pstr <- prune_taxa(taxa_sums(pstr) != 0, pstr)
-pstrr = transform_sample_counts(pstr, function(x) x/sum(x))
-
-pstrdistmat <- vegan::vegdist(sqrt(otu_table(pstrr)), method = "bray")
-
-pstrdf <- as.data.frame(cmdscale(pstrdistmat, k = 2)) %>%
-  mutate(sample_name = rownames(.)) %>%
-  left_join(sample_data(pstr)) %>%
-  as_tibble() %>%
-  select(V1, V2, sample_name, host_id, year, host_site, collection_depth) %>%
-  arrange(host_id, year)
-
-ggplot(pstrdf, aes(x = V1, y = V2, color = host_id)) +
-  geom_point(aes(shape = year)) +
-  geom_path(aes(group = host_id), arrow = arrow(length = unit(0.1, "inches"), type = "open")) +
-  labs(title = "Just Breviolum-dominated P.str.")
-```
-
-### *Siderastrea siderea*
-```{r siderea_summary, fig.width = 11}
-plot_both2(host_species == "siderea")
-```
-
-*S. siderea* hosts mainly *Cladocopium* profiles that do not change over time. A couple of colonies (7 and 73) may have fluctuating levels of multiple *Cladocopium* types. One colony at Cabritte Horn (51) is dominated by *Breviolum*.
-
-```{r}
-# NMDS for Ssid
-ssid <- merge_phyloseq(tax_table(variants), otu_table(variants), 
-                       subset(sample_data(variants), host_species == "siderea" & host_id != "RANDOM"))
-ssid <- prune_taxa(taxa_sums(ssid) != 0, ssid)
-ssidr = transform_sample_counts(ssid, function(x) sqrt(x/sum(x)))
-
-ssiddistmat <- vegan::vegdist(sqrt(otu_table(ssidr)), method = "bray")
-
-ssiddf <- as.data.frame(cmdscale(ssiddistmat, k = 2)) %>%
-  mutate(sample_name = rownames(.)) %>%
-  left_join(sample_data(ssid)) %>%
-  as_tibble() %>%
-  select(V1, V2, sample_name, host_id, year, host_site, collection_depth) %>%
-  arrange(host_id, year)
-
-ggplot(ssiddf, aes(x = V1, y = V2, color = host_id)) +
-  geom_point(aes(shape = year)) +
-  geom_path(aes(group = host_id), arrow = arrow(length = unit(0.1, "inches"), type = "open"))
-```
-
-# Detailed figures for each coral colony
-
-### Colpophyllia natans
-```{r}
-cnat <- data.frame(sam) %>%
-  distinct(host_id, host_genus, host_species, host_site) %>%
-  filter(host_species == "natans")
-
-for (i in 1:nrow(cnat)) {
-  p <- plot_both(mycol = cnat[i, "host_id"])
-  print(p)
-}
-```
-
-### Diploria labyrinthiformis
-```{r}
-dlab <- data.frame(sam) %>%
-  distinct(host_id, host_genus, host_species, host_site) %>%
-  filter(host_species == "labrynthiformis")
-
-for (i in 1:nrow(dlab)) {
-  p <- plot_both(mycol = dlab[i, "host_id"])
-  print(p)
-}
-```
-
-### Montastraea cavernosa
-```{r}
-mcav <- data.frame(sam) %>%
-  distinct(host_id, host_genus, host_species, host_site) %>%
-  filter(host_species == "cavernosa")
-
-for (i in 1:nrow(mcav)) {
-  p <- plot_both(mycol = mcav[i, "host_id"])
-  print(p)
-}
-```
-
-
-### Orbicella spp.
-```{r}
-orb <- data.frame(sam) %>%
-  distinct(host_id, host_genus, host_species, host_site) %>%
-  filter(host_genus == "Orbicella")
-
-for (i in 1:nrow(orb)) {
-  p <- plot_both(mycol = orb[i, "host_id"])
-  print(p)
-}
-```
-
-### Pseudodiploria strigosa
-```{r}
-pstr <- data.frame(sam) %>%
-  distinct(host_id, host_genus, host_species, host_site) %>%
-  filter(host_species == "strigosa")
-
-for (i in 1:nrow(pstr)) {
-  p <- plot_both(mycol = pstr[i, "host_id"])
-  print(p)
-}
-```
-
-### Siderastrea siderea
-```{r}
-ssid <- data.frame(sam) %>%
-  distinct(host_id, host_genus, host_species, host_site) %>%
-  filter(host_species == "siderea")
-
-for (i in 1:nrow(ssid)) {
-  p <- plot_both(mycol = ssid[i, "host_id"])
-  print(p)
-}
-```
-
-
-
-# 1. Symbiont community variability among and within coral species - beta diversity
-
-### Ordination for all coral samples
-```{r, include = F, eval = F}
-# Convert to relative abundance - and square root transform
-varr <- transform_sample_counts(variants, function(x) sqrt(x/sum(x)))     # Square-root transform
-
-# Run NMDS for visualization
-set.seed(53)
-varr.nmds <- ordinate(varr, "NMDS", "bray")
-varr.nmds.s <- plot_ordination(varr, varr.nmds, type="samples")
-varr.nmds.t <- plot_ordination(varr, varr.nmds, type="taxa")
-
-# Calculate centroids for each species for plotting
-centroids <- varr.nmds.s$data %>%
-  group_by(host_species) %>%
-  summarise(across(starts_with("NMDS"), mean, .names = "o{.col}")) %>%
-  right_join(varr.nmds.s$data)
-
-# Plot NMDS
-## Version with only coral samples and centroids
-nmds_plot <- ggplot(centroids, aes(x = NMDS1, y = NMDS2)) +
-  #geom_point(data = varr.nmds.t$data, aes(fill = clade, shape = clade), stroke = NA, alpha = 0.5) +
-  geom_point() +
-  geom_segment(aes(xend = oNMDS1, yend = oNMDS2, color = host_species)) +
-  theme_custom() +
-  scale_shape_manual(values = 21:25) +
-  scale_color_corals('color') +
-  scale_color_corals('fill'); nmds_plot
-
-## Version with coral samples and centroids overlaying symbiont clade contours
-nmds_plot <- as_tibble(varr.nmds.t$data) %>%
-  ggplot(aes(x = NMDS1, y = NMDS2)) +
-  stat_density_2d(aes(fill = clade),
-                  data = filter(as_tibble(varr.nmds.t$data), clade != "G"),
-                  geom = "polygon", bins = 10, alpha = 0.1, lwd = 0) +
-  theme_custom() +
-  # # Add coral species ordispiders
-  geom_point(data = centroids, aes(color = host_species)) +
-  geom_segment(data = centroids, aes(xend = oNMDS1, yend = oNMDS2, color = host_species), alpha = 0.8) +
-  scale_fill_manual(values = c('#ffff99', '#b2df8a', '#a6cee3', '#fb9a99')) +
-  #scale_color_manual(values = c('#1f78b4', '#33a02c', '#e31a1c', '#b15928', '#ff7f00', '#cab2d6', '#6a3d9a', '#fdbf6f'))
-  scale_color_corals('color'); nmds_plot
-
-distmat <- vegan::vegdist(otu_table(varr), "bray")
-# Calculate beta diversity as distance to centroid (PCoA) for each host species
-bd <- vegan::betadisper(d = distmat, group = sample_data(varr)$host_species,
-                        type = "centroid", bias.adjust = FALSE)
-permutest(bd, pairwise = TRUE)
-bdres <- as_tibble(sample_data(varr)) %>%
-  select(host_id, year, sample_name, host_species) %>%
-  mutate(dist_to_centroid = bd$distances)
-
-# Analyze differences in distance to centroid among coral species
-mod <- lm(dist_to_centroid ~ host_species, data = bdres)
-anova(mod)
-### Are these stats valid, or do we need stats from betadisper() / permutation tests?
-emm <- emmeans(mod, specs = "host_species") %>%
-  as_tibble() %>%
-  mutate(host_species = fct_reorder(host_species, emmean, .desc = TRUE))
-
-bdres %>%
-  mutate(host_species = factor(host_species, levels = levels(emm$host_species))) %>%
-  ggplot(aes(x = host_species, y = dist_to_centroid, color = host_species)) +
-    geom_point() +
-    geom_point(data = emm, aes(y = emmean), pch = 5, size = 5) +
-    geom_errorbar(data = emm, aes(y = emmean, ymin = emmean - SE, ymax = emmean + SE), width = 0.25) +
-    theme_custom() +
-    scale_color_corals('color')
-
-# Plot beta diversity
-bd_plot <- ggplot(emm, aes(x = host_species, y = emmean, color = host_species)) +
-  geom_col(aes(fill = host_species), width = 0.8) +
-  geom_point() +
-  geom_errorbar(aes(ymin = emmean - SE, ymax = emmean + SE), width = 0) +
-  geom_text(aes(label = host_species, y = 0.01), color = "black", hjust = 0, angle = 90, size = 3) +
-  theme_custom() +
-  scale_color_corals('color') +
-  scale_color_corals('fill') +
-  theme(axis.text.x = element_text(color = "white")) +
-  theme(legend.position = "none") +
-  labs(x = "Coral species", y = "Distance to centroid"); bd_plot
-
-# Multipanel figure
-legend <- get_legend(nmds_plot)
-nmds_plot_nolegend <- nmds_plot + theme(legend.position = "none")
-right_side <- plot_grid(legend, bd_plot, ncol = 1)
-cowplot::plot_grid(nmds_plot_nolegend, right_side, nrow = 1, rel_widths = c(0.7, 0.3))
-```
-
-
-
-# 2b. Which symbionts are changing over time within colonies/species?
-```{r mcmc.otu}
-library(MCMC.OTU)
-
-
-# MCAV
-physeq <- subset_samples(variants, host_species == "cavernosa")
-otus <- data.frame(otu_table(physeq), check.names=F)
-mcmc <- data.frame(year=sample_data(physeq)$year, host_species=sample_data(physeq)$host_species, 
-                   host_id = sample_data(physeq)$host_id, sample=rownames(sample_data(physeq)),
-                   otus, check.names=F)
-goods <- purgeOutliers(mcmc, count.columns=5:ncol(mcmc), otu.cut=0.001)    # Remove OTUs comprising < 1% total counts
-gss <- otuStack(goods, count.columns=c(5:length(goods[1, ])), condition.columns=c(1:4)) # Stack the data
-mm <- mcmc.otu(fixed="year", data=gss, nitt=55000, thin=50, burnin=5000)  # Fit the model 
-  
-acpass <- otuByAutocorr(mm, gss)  # Selecting the OTUs that were modeled reliably
-smm0 <- OTUsummary(mm, gss, otus=acpass, summ.plot=FALSE)   # Diff & p-vals btw all pairs of factor combinations
-smmA <- padjustOTU(smm0)    # Adjust p-values for multiple comparisons
-sigs <- signifOTU(smmA, p.cutoff=0.1)    # Significant OTUs at FDR level
-
-smm1 <- OTUsummary(mm, gss, otus=sigs, summ.plot=FALSE)
-taxinfo <- data.frame(otu=rownames(tax_table(physeq)),
-                      clade=data.frame(tax_table(physeq))$clade,
-                      DIV=data.frame(tax_table(physeq))$DIV)
-summary <- merge(smm1$summary, taxinfo, by="otu")
-
-summary %>%
-  mutate(perc = 10^mean * 100)
-
-ggplot(summary, aes(x = year, y = mean)) + geom_point()
-# B1 goes up in 2018 then back down in 2019. This is just one seq though... can we glom to clade level to get an idea of what the relative abundance of all B seqs was in Mcav over time?
-
-# SIDEREA - nothing significant
-# ANNULARIS / ORBICELLA - nothing significant
-# all corals? - nothing significant
-physeq <- subset_samples(variants, host_id == 7)
-otus <- data.frame(otu_table(physeq), check.names=F)
-mcmc <- data.frame(year=sample_data(physeq)$year, host_species=sample_data(physeq)$host_species, 
-                   host_id = sample_data(physeq)$host_id, sample=rownames(sample_data(physeq)),
-                   otus, check.names=F)
-goods <- purgeOutliers(mcmc, count.columns=5:ncol(mcmc), otu.cut=0.001)    # Remove OTUs comprising < 0.1% total counts
-gss <- otuStack(goods, count.columns=c(5:length(goods[1, ])), condition.columns=c(1:4)) # Stack the data
-mm <- mcmc.otu(fixed="year", data=gss, nitt=55000, thin=50, burnin=5000)  # Fit the model 
-  
-acpass <- otuByAutocorr(mm, gss)  # Selecting the OTUs that were modeled reliably
-smm0 <- OTUsummary(mm, gss, otus=acpass, summ.plot=FALSE)   # Diff & p-vals btw all pairs of factor combinations
-smmA <- padjustOTU(smm0)    # Adjust p-values for multiple comparisons
-sigs <- signifOTU(smmA, p.cutoff=0.7)    # Significant OTUs at FDR level
-
-smm1 <- OTUsummary(mm, gss, otus=sigs, summ.plot=FALSE)
-taxinfo <- data.frame(otu=rownames(tax_table(physeq)),
-                      clade=data.frame(tax_table(physeq))$clade,
-                      DIV=data.frame(tax_table(physeq))$DIV)
-summary <- merge(smm1$summary, taxinfo, by="otu")
-
-summary %>%
-  mutate(perc = 10^mean * 100)
-
-ggplot(summary, aes(x = year, y = mean)) + geom_point()
-```
-
-```{r mcmc.otu2}
-# maybe need to pivot even wider with all OTU_Year combos as columns?
-widedat <- as_tibble(select(data.frame(sample_data(variants)), 
-                            host_id, year, sample_name, host_genus, host_species)) %>%
-  full_join(as_tibble(data.frame(otu_table(varr)), rownames = "sample_name")) %>%
-  select(-sample_name) %>%
-  group_by(host_id) %>%
-  filter(n() == 3) %>%
-  ungroup() %>%
-  pivot_wider(names_from = year, values_from = 5:ncol(.))
-widedistmat <- vegdist(widedat[,4:ncol(widedat)], method = "manhattan", na.rm = TRUE)
-
-clust <- hclust(widedistmat)
-plot(clust, labels = paste0(widedat$host_species, widedat$host_id))
-grp <- cutree(clust, k = 5)
-plot(clust, labels = grp)
-
-#### OK cool, now try MCMC.OTU on groups of corals that hclust identified as similar over time
-#natans33,60,12,5 --> nothing sig
-#siderea7/46,41,44 --> nothing sig
-# cavernosa49,6,39 --> B1 sig
-#natans52+strigosa45 --> nothing sig
-#orbicella80,81,40,3 --> nothing sig
-physeq <- subset_samples(variants, host_species == "cavernosa")
-otus <- data.frame(otu_table(physeq), check.names=F)
-mcmc <- data.frame(year=sample_data(physeq)$year, host_species=sample_data(physeq)$host_species, 
-                   host_id = sample_data(physeq)$host_id, sample=rownames(sample_data(physeq)),
-                   otus, check.names=F)
-goods <- purgeOutliers(mcmc, count.columns=5:ncol(mcmc), otu.cut=0.001)    # Remove OTUs comprising < 0.1% total counts
-gss <- otuStack(goods, count.columns=c(5:length(goods[1, ])), condition.columns=c(1:4)) # Stack the data
-mm <- mcmc.otu(fixed="year", data=gss, nitt=55000, thin=50, burnin=5000)  # Fit the model 
-  
-acpass <- otuByAutocorr(mm, gss)  # Selecting the OTUs that were modeled reliably
-smm0 <- OTUsummary(mm, gss, otus=acpass, summ.plot=FALSE)   # Diff & p-vals btw all pairs of factor combinations
-smmA <- padjustOTU(smm0)    # Adjust p-values for multiple comparisons
-sigs <- signifOTU(smmA, p.cutoff=.1)    # Significant OTUs at FDR level
-
-smm1 <- OTUsummary(mm, gss, otus=sigs, summ.plot=FALSE)
-taxinfo <- data.frame(otu=rownames(tax_table(physeq)),
-                      clade=data.frame(tax_table(physeq))$clade,
-                      DIV=data.frame(tax_table(physeq))$DIV)
-summary <- merge(smm1$summary, taxinfo, by="otu")
-
-summary %>% mutate(perc = 10^mean * 100)
-#MCMC.OTU identifies B1 and B19 as increasing in 2018, then decreasing again in 2019
-```
-
-```{r deseq2}
-library(DESeq2)
-
-# Use DESeq2 to test differences between years for different sets of colonies
-out <- deseqDA(host_ids = c(52, 45))#natans52+strigosa45 --> nothing sig
-out <- deseqDA(host_ids = c(33,60,12,5)) #natans33,60,12,5 --> nothing compelling
-out <- deseqDA(host_ids = c(46, 41, 44)) #siderea7/46,41,44 --> nothing compelling
-out <- deseqDA(host_ids = c(49,6,39))# cavernosa49,6,39 --> Bs and Cs sig
-out <- deseqDA(host_ids = c(80, 81, 40, 3)) #orbicella80,81,4,3 --> nothing compelling
-out <- deseqDA(host_ids = c(49, 58, 6, 34, 39, 55, 19, 25, 69, 70))   # ALL CAVERNOSA B1/B19
-out
-ggplot(out, aes(x = year, y = count, color = host_id, group = host_id)) +
-  facet_wrap(~variant) +
-  geom_point()# +
-  #geom_line()
-
-#DESeq2 also identifies B1 and B19 in Mcavernosa going up then down again. Also a couple C seqs do same.
-```
-
-
-
-# PCoA version
-```{r}
-varr <- transform_sample_counts(variants, function(x) sqrt(x/sum(x)))     # Square-root transform
-
-# Bray-Curtis distance matrix
-distmat <- vegan::vegdist(otu_table(varr), method = "bray")
-
-# Principal Coordinates Analysis
-varrdf <- as.data.frame(cmdscale(distmat, k = nsamples(varr) - 1)) %>%      # Specify k dimensions   #####
-  mutate(sample_name = rownames(.)) %>%
-  left_join(sample_data(varr)) %>%
-  as_tibble() %>%
-  select(starts_with("V"), host_species, host_id, year, host_site, collection_depth) %>%
-  arrange(host_id, year)
-
-# Calculate distance moved (in ordination space) from year to year for each colony 
-dists <- varrdf %>%
-  group_by(host_id) %>%
-  #filter(n() == 3) %>%
-  nest(data = c(year, starts_with("V"))) %>%
-  mutate(years = map(data, ~.[,1]),
-         points = map(data, ~.[,-1])) %>%
-  mutate(d = map(points, dist),
-         pd = map(d, broom::tidy)) %>%
-  unnest(pd) %>%
-  mutate(y1 = map2_chr(item1, years, ~case_when(.x == 1 ~ .y[[1]][1],
-                                                .x == 2 ~ .y[[1]][2])),
-         y2 = map2_chr(item2, years, ~case_when(.x == 2 ~ .y[[1]][2],
-                                                .x == 3 ~ .y[[1]][3]))) %>%
-  select(host_id, host_species, host_site, y1, y2, distance) %>%
-  rowwise() %>%
-  mutate(period = paste(y1, y2, sep = "-"))
-
-# Plot movement by species
-dists %>%
-  mutate(gap = as.numeric(y2) - as.numeric(y1)) %>%
-  filter(gap == min(gap)) %>%                         # selects 1-year gaps only for cols sampled 3x
-  ggplot(aes(x = host_species, y = distance)) +
-  geom_violin() +
-  geom_point(aes(color = host_site))
-
-# Plot movement by year / species
-ggplot(dists, aes(x = interaction(y1,y2), y = distance, color = host_species)) +
-  geom_point()
-
-
-mod <- lmer(log(distance) ~ period * host_species + (1|host_id), data = filter(dists, period %in% c("2017-2018", "2017-2019")))
-hist(residuals(mod))
-car::Anova(mod)
-emm <- emmeans(mod, specs = c("period", "host_species"), type = "response")
-contrast(emm, by = "host_species")
-
-# Get model means and combine with zeros as baseline
-ord18 <- as_tibble(emm) %>% filter(period == "2017-2018") %>% arrange(-response)
-ord18
-
-res <- as_tibble(emm) %>%
-  filter(period %in% c("2017-2018", "2017-2019")) %>%
-  full_join(tibble(period = "2017", distinct(varrdf, host_species), response = 0)) %>%
-  filter(host_species != "furcata") %>%
-  mutate(host_species = factor(host_species, levels = c("cavernosa", "siderea", "annularis", "natans",
-                                                        "labrynthiformis", "franksi", "faveolata", "strigosa")))
-
-# Plot
-res %>%
-  ggplot(aes(x = period, y = response, color = host_species, group = host_species)) + 
-  geom_point(position = position_dodge(width = 0.3)) +
-  geom_errorbar(aes(ymin = response - SE, ymax = response + SE), position = position_dodge(width = 0.3), width = 0.1) +
-  geom_line(position = position_dodge(width = 0.3)) +
-  theme_custom()
-
-```
