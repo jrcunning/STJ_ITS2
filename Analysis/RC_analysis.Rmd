@@ -23,6 +23,7 @@ library(emmeans)
 library(tidyverse)
 library(vegan)
 library(ggh4x)
+library(stringi)
 
 # library(conflicted)
 # conflict_prefer("select", "dplyr")
@@ -104,19 +105,19 @@ save(profiles, variants, file = "data/Symb_phyloseq.RData")
 
 #ppal <- sample(allcolors, ntaxa(profiles))
 #ppal <- hue_pal(l = 65)(ntaxa(profiles))
-qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',]
-col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
-set.seed(555)
-ppal <- sample(col_vector, ntaxa(profiles))
-ppal <- setNames(ppal, data.frame(tax_table(profiles))$its2_type_profile)
-
-allcolors <- grDevices::colors()
-set.seed(888)
-vpal <- sample(allcolors, ntaxa(variants))
-#vpal <- hue_pal(l = 65)(ntaxa(variants))
-vpal <- setNames(vpal, taxa_names(variants))
-
-
+# qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',]
+# col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
+# set.seed(555)
+# ppal <- sample(col_vector, ntaxa(profiles))
+# ppal <- setNames(ppal, data.frame(tax_table(profiles))$its2_type_profile)
+# 
+# allcolors <- grDevices::colors()
+# set.seed(888)
+# vpal <- sample(allcolors, ntaxa(variants))
+# #vpal <- hue_pal(l = 65)(ntaxa(variants))
+# vpal <- setNames(vpal, taxa_names(variants))
+# 
+# 
 
 # Coral colors
 
@@ -405,7 +406,7 @@ nt <- tt %>% count(clade) %>% pivot_wider(names_from = clade, values_from = n)
 acols <- colorRampPalette(brewer.pal(9, "Greys"))(nt$A)
 bcols <- colorRampPalette(brewer.pal(9, "Greens"))(nt$B)
 ccols <- colorRampPalette(brewer.pal(9, "Blues"))(nt$C)
-dcols <- colorRampPalette(brewer.pal(9, "Oranges"))(nt$D)
+dcols <- colorRampPalette(brewer.pal(4, "Oranges"))(nt$D)
 set.seed(556)
 vpal <- c(acols[shuffle(acols)], bcols[shuffle(bcols)], ccols[shuffle(ccols)], dcols[shuffle(dcols)])
 vpal <- setNames(vpal, tt$DIV)
@@ -453,10 +454,10 @@ pp <- as_tibble(data.frame(tax_table(p))) %>%
   arrange(clade, its2_type_profile) %>%
   mutate(its2_type_profile_trunc = str_trunc(its2_type_profile, 22, "right"))
 np <- pp %>% count(clade) %>% pivot_wider(names_from = clade, values_from = n)
-acols <- tail(brewer.pal(5, "Greys"), np$A)
+acols <- brewer.pal(np$A, "Greys")
 bcols <- colorRampPalette(brewer.pal(9, "YlGn"))(np$B)
-ccols <- colorRampPalette(brewer.pal(9, "PuBu"))(np$C)
-dcols <- tail(brewer.pal(9, "Reds"), np$D)
+ccols <- colorRampPalette(brewer.pal(6, "PuBu"))(np$C)
+dcols <- brewer.pal(np$D, "Reds")
 set.seed(556)
 ppal <- c(acols, bcols, ccols, dcols)
 ppal <- setNames(ppal, pp$its2_type_profile_trunc)
@@ -501,7 +502,10 @@ g2 <- ggplot(pmdf, aes(x = year, y = Abundance)) +
           axis.ticks.y = element_blank(),
           strip.background = element_blank(),
           panel.spacing = unit(0.25, "mm")) +
-    guides(fill = guide_legend(ncol = 8))
+    guides(fill = guide_legend(ncol = 4))
+g2
+g2leg <- get_legend(g2)
+g2 <- g2 + theme(legend.position = "none")
 g2
 
 fig1 <- plot_grid(g1, g2, nrow = 2, label_fontface = "plain", rel_heights = c(0.6, 0.4))
@@ -509,6 +513,82 @@ fig1 <- plot_grid(g1, g2, nrow = 2, label_fontface = "plain", rel_heights = c(0.
 fig1
 
 ggsave(fig1, filename = "Output/Figure1.png", width = 183, height = 70, units = "mm")
+```
+
+```{r}
+# how many diff dom profiles in each species?
+pmdf %>%
+  filter(Abundance > 0.5) %>%
+  group_by(host_species) %>%
+  distinct(its2_type_profile)
+
+pmdf %>%
+  filter(Abundance > 0.5) %>%
+  group_by(host_species) %>%
+  summarize(n_colonies = n_distinct(host_id),
+            n_domprof = n_distinct(its2_type_profile)) %>%
+  arrange(n_domprof / n_colonies)
+
+pmdf %>%
+  filter(Abundance > 0.5) %>%
+  group_by(host_species, its2_type_profile) %>%
+  summarize(cols = paste0(unique(host_id), collapse = ",")) %>%
+  print(n = nrow(.))
+
+
+###### NETWORKS of dom profiles
+library(igraph)
+#only one connection per unique colony
+df2 <- as_tibble(pmdf) %>%
+  filter(Abundance > 0.5) %>%
+  select(its2_type_profile, host_species, host_id, year) %>%
+  distinct(its2_type_profile, host_species, host_id) %>%
+  group_by(its2_type_profile, host_species) %>%
+  mutate(n = n(),
+         weights = 1/n) %>%
+  ungroup()
+
+net <- graph_from_data_frame(df2, directed = FALSE)
+
+V(net)$type <- if_else(V(net)$name %in% unique(pmdf$host_species), "coral", "sym")
+V(net)$clade <- if_else(V(net)$type == "sym", str_sub(V(net)$name, 1, 1), NA_character_)
+V(net)$shape <- c("square", "circle")[factor(V(net)$type)]
+taxcolors <- matrix(c("#f2f2f2", "#ccebc5", "#b3cde3", "#fbb4ae"), 
+                    dimnames=list(c("A", "B", "C", "D")))
+ppal <- c(acols, bcols, ccols, dcols)
+ppal <- setNames(ppal, pp$its2_type_profile)
+V(net)$color <- if_else(is.na(V(net)$clade), "white", taxcolors[factor(V(net)$clade, levels=c("A","B","C","D","G"))])
+V(net)$color <- if_else(is.na(V(net)$clade), "white", ppal[V(net)$name])
+
+ 
+
+V(net)$label <- sapply(V(net)$name, function(x) paste0(stri_wrap(str = x, width = 12, whitespace_only = FALSE),
+          collapse = "\n"))
+V(net)$label[29:37] <- c("Cnat", "Dlab", "Mcav", "Oann", "Ofav", "Ofra", "Pfur", "Pstr", "Ssid")
+V(net)$label.cex = if_else(V(net)$type == "coral", 0.75, 0.4)
+V(net)$label.color = "black"
+V(net)$size = if_else(V(net)$type == "coral", 14, 20)
+
+
+# set.seed(27)
+# test.layout <- layout_(net, with_dh(weight.edge.lengths = edge_density(net)/100000))
+# plot(net, layout = test.layout)
+
+set.seed(1)
+plot(net, layout = layout_with_fr(net, weights = E(net)$weights^1))
+
+png("Output/Figure2.png", width = 180, height = 180, units = "mm", res = 300)
+set.seed(1)
+plot(net, layout = layout_with_fr(net, weights = E(net)$weights^1))
+dev.off()
+
+
+library(ggplotify)
+mynet <- base2grob(~plot(net, layout = layout_with_fr(net, weights = E(net)$weights^1)))
+
+bottom <- plot_grid(g2leg, mynet)
+bigfig <- plot_grid(fig1, bottom, ncol = 1)
+bigfig
 ```
 
 
@@ -540,59 +620,7 @@ favi %>%
 # pmdf %>% filter(its2_type_profile == "B19/B5af-B19e-B19c-B5ag-B19d-B19f-B40a-B19h")
 ```
 
-```{r}
-# how many diff dom profiles in each species?
-pmdf %>%
-  filter(Abundance > 0.5) %>%
-  group_by(host_species) %>%
-  distinct(its2_type_profile)
 
-pmdf %>%
-  filter(Abundance > 0.5) %>%
-  group_by(host_species) %>%
-  summarize(n_colonies = n_distinct(host_id),
-            n_domprof = n_distinct(its2_type_profile)) %>%
-  arrange(n_domprof / n_colonies)
-
-pmdf %>%
-  filter(Abundance > 0.5) %>%
-  group_by(host_species, its2_type_profile) %>%
-  summarize(cols = paste0(unique(host_id), collapse = ",")) %>%
-  print(n = nrow(.))
-
-
-###### NETWORKS of dom profiles
-library(igraph)
-#only one connection per unique colony
-df2 <- as_tibble(pmdf) %>%
-  filter(Abundance > 0.5) %>%
-  select(its2_type_profile, host_species, host_id, year) %>%
-  distinct(its2_type_profile, host_species, host_id)
-
-net <- graph_from_data_frame(df2, directed = FALSE)
-
-V(net)$type <- if_else(V(net)$name %in% unique(pmdf$host_species), "coral", "sym")
-V(net)$clade <- if_else(V(net)$type == "sym", str_sub(V(net)$name, 1, 1), NA_character_)
-V(net)$shape <- c("square", "circle")[factor(V(net)$type)]
-taxcolors <- matrix(c("#f2f2f2", "#ccebc5", "#b3cde3", "#fbb4ae"), 
-                    dimnames=list(c("A", "B", "C", "D")))
-V(net)$color <- if_else(is.na(V(net)$clade), "white", taxcolors[factor(V(net)$clade, levels=c("A","B","C","D","G"))])
- 
-
-V(net)$label <- sapply(V(net)$name, function(x) paste0(stri_wrap(str = x, width = 12, whitespace_only = FALSE),
-          collapse = "\n"))
-V(net)$label[29:37] <- c("Cnat", "Dlab", "Mcav", "Oann", "Ofav", "Ofra", "Pfur", "Pstr", "Ssid")
-V(net)$label.cex = if_else(V(net)$type == "coral", 1, 0.5)
-V(net)$label.color = "black"
-V(net)$size = if_else(V(net)$type == "coral", 15, 25)
-
-
-set.seed(27)
-test.layout <- layout_(net, with_dh(weight.edge.lengths = edge_density(net)/100000))
-plot(net, layout = test.layout)
-
-
-```
 
 ```{r, dom_bk_etc}
 # Changes in dominant genus
