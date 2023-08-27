@@ -1,18 +1,15 @@
 ---
-title: "St. John symbiont time series"
+title: "Measuring multi-year changes in the Symbiodiniaceae algae in Caribbean corals on coral-depleted reefs"
 author: "R. Cunning"
-date: "2/16/2022"
+date: "08/27/2023"
 output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
-
-
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 ```
 
-```{r libraries}
-
+```{r load_libraries}
 library(janitor)
 library(phyloseq)  # BiocManager::install("phyloseq")
 library(cowplot)
@@ -28,8 +25,49 @@ library(ggh4x)
 library(stringi)
 ```
 
+```{r ggplot_theme}
+# Create custom ggplot theme
+theme_custom <- function() {
+  theme_bw(base_size = 10, base_family = "Arial") %+replace%
+    theme(
+      panel.grid.major = element_blank(), 
+      panel.grid.minor = element_blank(), 
+      panel.background = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA),
+      legend.background = element_rect(fill = NA, colour = NA)
+    )
+}
+
+sppord <- factor(levels = c("Cnat", "Dlab", "Pstr", "Pfur",
+                            "Ssid", "Oann", "Ofav", "Ofra", "Mcav"))
+
+## ggplot labeller
+sppnames <- c(
+  Cnat = "C. natans",
+  Dlab = "D. labyrinthiformis",
+  Pstr = "P. strigosa",
+  Pfur = "P. furcata",
+  Ssid = "S. siderea",
+  Oann = "O. annularis",
+  Ofav = "O. faveolata",
+  Ofra = "O. franksi",
+  Mcav = "M. cavernosa"
+)
+
+sitenames <- c(
+  EastTektite = "ET",
+  WhitePoint = "WP",
+  CabritteHorn = "CH"
+)
+
+global_labeller <- labeller(
+  gspp = sppnames,
+  host_site = sitenames
+)
+```
+
 # Load Data
-```{r profiles, include = FALSE}
+```{r load_its2_profiles}
 sam0 <- read_csv("Data/STJ_Metadata_2017_2019.csv") %>%
   clean_names()
 sam1 <- as.matrix(sam0)
@@ -60,7 +98,7 @@ otu <- otu_table(otu1, taxa_are_rows = FALSE)
 profiles <- phyloseq(otu, tax, sam)
 ```
 
-```{r variants, include = FALSE}
+```{r load_its2_variants}
 taxnames <- read_tsv(
   file = "Data/20200623_lenz/post_med_seqs/111_20200624_2020-06-24_03-40-50.238182.seqs.absolute.abund_and_meta.txt",
   n_max = 0) %>%
@@ -82,11 +120,9 @@ rownames(otu1) <- otu0$sample_name
 otu <- otu_table(otu1, taxa_are_rows = FALSE)
 
 variants <- phyloseq(otu, tax, sam)
-
-tax_table(variants)
 ```
 
-```{r filter_save, include = FALSE}
+```{r its2_filter_save}
 # Filter out RANDOM samples (non-tagged colonies)
 variants <- subset_samples(variants, host_id != "RANDOM")
 variants <- prune_taxa(taxa_sums(variants) != 0, variants)
@@ -96,66 +132,8 @@ profiles <- prune_taxa(taxa_sums(profiles) != 0, profiles)
 save(profiles, variants, file = "data/Symb_phyloseq.RData")
 ```
 
-# Create custom ggplot theme
-
-```{r ggplot_theme}
-# Create custom ggplot theme
-theme_custom <- function() {
-  theme_bw(base_size = 10, base_family = "Arial") %+replace%
-    theme(
-      panel.grid.major = element_blank(), 
-      panel.grid.minor = element_blank(), 
-      panel.background = element_blank(),
-      panel.border = element_rect(color = "black", fill = NA),
-      legend.background = element_rect(fill = NA, colour = NA)
-    )
-}
-
-# scale_color_corals <- function(aesthetic, ...) {
-#   ggplot2:::manual_scale(
-#     aesthetic,
-#     labels = c("M. cavernosa", "S. siderea", "O. annularis", 
-#                "D. labyrinthiformis", "O. franksi", "C. natans", 
-#                "P. strigosa", "P. furcata", "O. faveolata"),
-#     values = setNames(c("#00B9E3", "#00BA38", "#F8766D",
-#                         "#93AA00", "#FF61C3", "#00C19F",
-#                         "#619CFF", "#D39200", "#DB72FB"),
-#                       c("cavernosa", "siderea", "annularis",
-#                         "labrynthiformis", "franksi", "natans",
-#                         "strigosa", "furcata", "faveolata")),
-#     ...)
-# }
-
-sppord <- factor(levels = c("Cnat", "Dlab", "Pstr", "Pfur",
-                            "Ssid", "Oann", "Ofav", "Ofra", "Mcav"))
-
-## ggplot labeller
-sppnames <- c(
-  Cnat = "C. natans",
-  Dlab = "D. labyrinthiformis",
-  Pstr = "P. strigosa",
-  Pfur = "P. furcata",
-  Ssid = "S. siderea",
-  Oann = "O. annularis",
-  Ofav = "O. faveolata",
-  Ofra = "O. franksi",
-  Mcav = "M. cavernosa"
-)
-
-sitenames <- c(
-  EastTektite = "ET",
-  WhitePoint = "WP",
-  CabritteHorn = "CH"
-)
-
-global_labeller <- labeller(
-  gspp = sppnames,
-  host_site = sitenames
-)
-```
-
-# Table of all sampling done
-```{r}
+# Coral sampling summary
+```{r sampling_summary_table1}
 # Create table of number of tagged colonies sampled at each site at each year
 table1 <- as_tibble(sample_data(profiles)) %>%
   drop_na(host_id) %>%
@@ -165,11 +143,15 @@ table1 <- as_tibble(sample_data(profiles)) %>%
   pivot_wider(names_from = c(host_site, year), values_from = n) %>% 
   adorn_totals(where = "row")
 
+# Save Table 1
 write_csv(table1, path = "Output/Table1.csv")
+
+# Display Table 1
+knitr::kable(table1)
 ```
 
-# ITS2 sequencing dataset summary
-```{r QC, include = FALSE}
+# ITS2 sequence dataset summary and QC
+```{r its2_qc}
 # Total number of post-MED sequences in dataset
 sum(sample_sums(variants))
 # Total number of samples in dataset
@@ -188,28 +170,28 @@ hist(sample_sums(variants), breaks = 100)
 # One sample is an outlier with very high read count -- remove for summary stats of remaining samples
 outlier <- sample_sums(variants)[which(sample_sums(variants) == max(sample_sums(variants)))]
 woout <- sample_sums(variants)[which(sample_sums(variants) != max(sample_sums(variants)))]
+
 # Histogram of remaining samples read counts
 hist(woout, breaks = 50)
+
 # Mean number of sequences per sample and standard deviation
 mean(woout); sd(woout)
-
-# Number of sequence variants and profiles
-ntaxa(variants)
-ntaxa(profiles)
 
 # Count number of sequences and profiles by genus(/clade)
 # Sequences
 data.frame(tax_table(variants)) %>% as_tibble() %>%
-  count(clade)
+  count(clade) %>%
+  adorn_totals(where = "row")
 # Profiles
 data.frame(tax_table(profiles)) %>% as_tibble() %>%
-  count(clade)
+  count(clade) %>%
+  adorn_totals(where = "row")
 ```
 
-# Barplots of sequence variant and profile composition for all samples
-```{r}
-# Algal genotypes --- whole dataset summary figure
+# Analyze ITS2 sequence composition across all samples
 
+### Barplots of sequence variant and profile composition
+```{r its2_barplots, fig.width = 10, fig.height = 5}
 ## Transform to relative abundance
 v <- transform_sample_counts(variants, function(x) x/sum(x))     # Relative abundance
 p <- transform_sample_counts(profiles, function(x) x/sum(x))     # Relative abundance
@@ -218,13 +200,12 @@ p <- transform_sample_counts(profiles, function(x) x/sum(x))     # Relative abun
 vt <- transform_sample_counts(v, function(x) ifelse(x > 0.001, x, 0))
 vt <- prune_taxa(taxa_sums(vt) != 0, vt)
 
-### Arrange colonies by similarity within species
+## Order colonies by sequence variant composition similarity within species for plotting
 mp <- merge_samples(vt, "host_id")
 hc <- hclust(dist(data.frame(otu_table(mp))))
 neword <- tibble(host_id = as.character(sample_data(mp)$host_id), ord = hc$order)
 
-
-## Set colors for plotting variants, with distinct palettes by clade/genus
+## Set colors for plotting sequence variants, with distinct palettes for each symbiont clade/genus
 tt <- as_tibble(data.frame(tax_table(vt))) %>%
   arrange(clade, DIV)
 nt <- tt %>% count(clade) %>% pivot_wider(names_from = clade, values_from = n)
@@ -236,12 +217,11 @@ set.seed(556)
 vpal <- c(acols[shuffle(acols)], bcols[shuffle(bcols)], ccols[shuffle(ccols)], dcols[shuffle(dcols)])
 vpal <- setNames(vpal, tt$DIV)
 
-# Order data for plotting
+## Set plotting order for sequence variants
 divord <- as_tibble(data.frame(tax_table(vt))) %>%
   arrange(clade, DIV) %>%
   mutate(DIV = as_factor(DIV))
 
-  
 vmdf <- psmelt(vt) %>%
   left_join(neword) %>%
   arrange(host_genus, host_species, host_site, ord, year, clade, DIV) %>%
@@ -252,7 +232,7 @@ vmdf <- psmelt(vt) %>%
                        levels = levels(sppord)),
          DIV = factor(DIV, levels = divord$DIV))
 
-# Plot variants
+# Create barplot for sequence variants
 g1 <- ggplot(vmdf, aes(x = year, y = Abundance)) + 
   geom_col(width = 1, aes(fill = DIV)) + 
   facet_nested(~ gspp + host_site + host_id, 
@@ -300,13 +280,9 @@ pmdf <- psmelt(p) %>%
          genus_species = as_factor(paste(str_sub(host_genus, 1, 1), ". ", host_species, sep = "")),
          gspp = factor(paste0(str_sub(host_genus, 1, 1), str_sub(host_species, 1, 3)),
                        levels = levels(sppord))) %>%
-  filter(Abundance > 0.01)# %>% 
-  #complete(year, host_id)
+  filter(Abundance > 0.01)
 
-pmdf <- pmdf %>%
-  mutate(yearlab = case_when(host_id == "12" ~ year,
-                             TRUE ~ ""))
-  
+# Create barplot for profiles
 g2 <- ggplot(pmdf, aes(x = year, y = Abundance)) +
     geom_col(width = 1, aes(fill = its2_type_profile_trunc)) +
     facet_nested(~ gspp + host_site + host_id) +
@@ -328,23 +304,24 @@ g2 <- ggplot(pmdf, aes(x = year, y = Abundance)) +
           panel.spacing = unit(0.25, "mm")) +
     guides(fill = guide_legend(ncol = 3))
 
-# Get legend for creating multipanel figure
+# Extract legend from profiles barplot to use in multipanel figure below
 g2leg <- get_legend(g2)
-g2leg <- as.ggplot(g2leg) + theme(plot.margin = unit(c(-30, 0, 0, -10), "mm"))
+g2leg <- ggplotify::as.ggplot(g2leg) + theme(plot.margin = unit(c(-30, 0, 0, -10), "mm"))
 g2 <- g2 + theme(legend.position = "none")
 
-
+# Combine variants and profiles barplots into single panel to be Figure 1a
 fig1a <- plot_grid(g1, g2, nrow = 2, label_fontface = "plain", rel_heights = c(0.6, 0.4))
 
-#fig1a
+# Display Figure 1a
+fig1a
 ```
 
-# Network analysis of dominant symbiont profiles
-```{r}
+### Network analysis of dominant symbiont profiles
+```{r network_analysis}
 library(igraph)
-#only one connection per unique colony
+# only one connection per unique colony
 df2 <- as_tibble(pmdf) %>%
-  filter(Abundance > 0.5) %>%
+  filter(Abundance > 0.5) %>%   # Dominant symbiont profiles only
   select(its2_type_profile_trunc, host_species, host_id, year) %>%
   distinct(its2_type_profile_trunc, host_species, host_id) %>%
   group_by(its2_type_profile_trunc, host_species) %>%
@@ -354,15 +331,13 @@ df2 <- as_tibble(pmdf) %>%
 
 net <- graph_from_data_frame(df2, directed = FALSE)
 
+# Modify vertex attributes for plotting
 V(net)$type <- if_else(V(net)$name %in% unique(pmdf$host_species), "coral", "sym")
 V(net)$clade <- if_else(V(net)$type == "sym", str_sub(V(net)$name, 1, 1), NA_character_)
 V(net)$shape <- c("square", "circle")[factor(V(net)$type)]
 ppal2 <- c(acols, bcols, ccols, dcols)
 ppal2 <- setNames(ppal2, pp$its2_type_profile_trunc)
 V(net)$color <- ifelse(is.na(V(net)$clade), NA, ppal2[V(net)$name])
-
- 
-
 V(net)$label <- sapply(V(net)$name, function(x) paste0(stri_wrap(str = x, width = 10, whitespace_only = FALSE),
           collapse = "\n"))
 V(net)$label[29:37] <- c("C. natans", "D. labyrinthiformis", "M. cavernosa", "O. annularis", 
@@ -373,26 +348,33 @@ V(net)$label.color = "black"
 V(net)$frame.color = NA
 V(net)$size = if_else(V(net)$type == "coral", 8, 12)
 
-
+# Plot network
 library(ggplotify)
 set.seed(1)
 mynet <- base2grob(~plot(net, layout = layout_with_fr(net, weights = E(net)$weights^1), edge.width = 0.5))
-ggnet <- as.ggplot(mynet) +
+ggnet <- ggplotify::as.ggplot(mynet) +
   theme(plot.margin = unit(c(-20, -40, 60, -100), "points"))
+
+# Display network
+ggnet
 ```
 
-# Create multipanel Figure 1 with barplots and network plot
-```{r}
+### Create and save multipanel Figure 1 with barplots and network plot
+```{r Figure1}
 fig1a <- fig1a + theme(plot.margin = unit(c(5, 0, 0, 0), "mm"))
-bottom <- plot_grid(g2leg, ggnet, labels = c("", "b)"), label_x = -0.15) + theme(plot.background = element_rect(fill = "white", color = NA))
-fig1 <- plot_grid(fig1a, bottom, nrow = 2, rel_heights = c(0.4, 0.6), labels = c("a)", ""), label_y = 0.9) + 
+fig1b <- plot_grid(g2leg, ggnet, labels = c("", "b)"), label_x = -0.15) + 
+  theme(plot.background = element_rect(fill = "white", color = NA))
+fig1 <- plot_grid(fig1a, fig1b, nrow = 2, rel_heights = c(0.4, 0.6), labels = c("a)", ""), label_y = 0.9) + 
   theme(plot.margin = unit(c(0, 0, -27, 0), "mm"))
-fig1
+
 ggsave(fig1, filename = "Output/Figure1.png", width = 183, height = 120, units = "mm")
 ```
 
-# NMDS of all sequence variants by symbiont genus
-```{r nmds_Fig2}
+# Analyze coral host-specificity of sequence variants within each symbiont genus
+
+### Visualize sequence assemblage variation using NMDS
+```{r nmds_Figure2, fig.width = 10, fig.height = 3}
+# Get list of samples with >5% relative abundance of each symbiont genus
 samples_clades <- vmdf %>%
   # Get clade level relative abundances
   group_by(Sample, gspp, host_site, host_id, year, clade) %>%
@@ -403,34 +385,39 @@ samples_with_5pA <- samples_clades %>% filter(clade == "A", Abundance >= 0.05)
 samples_with_5pB <- samples_clades %>% filter(clade == "B", Abundance >= 0.05)
 samples_with_5pC <- samples_clades %>% filter(clade == "C", Abundance >= 0.05)
 samples_with_5pD <- samples_clades %>% filter(clade == "D", Abundance >= 0.05)
-#NMDS
-# Look at just Symbiodinium
+
+# Ordination analysis of variants within each clade/genus for samples with that clade at >5% relative abundance
+
+# Symbiodinium
 varA <- subset_samples(variants, sample_name %in% samples_with_5pA$Sample)
 varA <- subset_taxa(varA, clade == "A")
 # Run NMDS for visualization
 set.seed(54)
-varA.nmds <- ordinate(varA, "NMDS", "bray")
+varA.nmds <- ordinate(varA, "NMDS", "bray", trace = FALSE)
 varA.nmds.s <- plot_ordination(varA, varA.nmds, type="samples")
-# Look at just Breviolum
+
+# Breviolum
 varB <- subset_samples(variants, sample_name %in% samples_with_5pB$Sample)
 varB <- subset_taxa(varB, clade == "B")
 # Run NMDS for visualization
 set.seed(54)
-varB.nmds <- ordinate(varB, "NMDS", "bray")
+varB.nmds <- ordinate(varB, "NMDS", "bray", trace = FALSE)
 varB.nmds.s <- plot_ordination(varB, varB.nmds, type="samples")
-# Look at just Cladocopium
+
+# Cladocopium
 varC <- subset_samples(variants, sample_name %in% samples_with_5pC$Sample)
 varC <- subset_taxa(varC, clade == "C")
 # Run NMDS for visualization
 set.seed(55)
-varC.nmds <- ordinate(varC, "NMDS", "bray")
+varC.nmds <- ordinate(varC, "NMDS", "bray", trace = FALSE)
 varC.nmds.s <- plot_ordination(varC, varC.nmds, type="samples")
-# Look at just Durusdinium corals
+
+# Durusdinium
 varD <- subset_samples(variants, sample_name %in% samples_with_5pD$Sample)
 varD <- subset_taxa(varD, clade == "D")
 # Run NMDS for visualization
 set.seed(66)
-varD.nmds <- ordinate(varD, "NMDS", "bray")
+varD.nmds <- ordinate(varD, "NMDS", "bray", trace = FALSE)
 varD.nmds.s <- plot_ordination(varD, varD.nmds, type="samples")
 
 # Plot NMDS for each genus
@@ -459,89 +446,36 @@ clade_nmds <- bind_rows(
           text = element_text(size = 6), legend.text = element_text(size = 4)) +
   guides(shape = guide_legend(ncol = 9))
 
-clade_nmds
+# Save Figure 2
 ggsave(clade_nmds, filename = "Output/Figure2.png", width = 183, height = 60, units = "mm")
 
-
-
-# as_tibble(varB.nmds.s$data) %>%
-#   filter(host_species == "siderea")
-# 
-# pmdf2 <- psmelt(p) 
-# pmdf2 %>% filter(host_id == "51", Abundance > 0.5)
-# pmdf2 %>% filter(its2_type_profile == "B1-B1z-B1aa-B1ad-B1ac-B1ab", Abundance > 0.5)
-# pmdf2 %>% filter(its2_type_profile == "B1-B1x-B1t-B14b-B1af-B1ae-B1ag", Abundance > 0.5)
-# pmdf2 %>% filter(host_species == "cavernosa", Abundance > 0.9)
-# pmdf2 %>% filter(grepl("C40g", its2_type_profile), Abundance > 0) %>% 
-#   as_tibble() %>% select(Sample, Abundance, host_id, year, host_species) %>% print(n = nrow(.))
-# pmdf2 %>% filter(grepl("C3an", its2_type_profile), Abundance > 0) %>% 
-#   as_tibble() %>% select(Sample, Abundance, host_id, year, host_species,
-#                          its2_type_profile) %>% print(n = nrow(.))
-# pmdf2 %>% filter(grepl("C7", its2_type_profile), Abundance > 0.01) %>% 
-#   as_tibble() %>% select(Sample, Abundance, host_id, year, host_species,
-#                          its2_type_profile) %>% print(n = nrow(.))
-# pmdf2 %>% filter(host_species == "strigosa", clade == "C", Abundance > 0.5)
-# 
-# pmdf2 %>% filter(grepl("C3fe", its2_type_profile), Abundance > 0)
-# pmdf2 %>% filter(grepl("C54a", its2_type_profile), Abundance > 0)
-# 
-# pmdf2 %>% filter(host_species == "siderea", clade == "C", Abundance > 0.5)
-# pmdf2 %>% filter(grepl("C3a-", its2_type_profile), Abundance > 0)
-# pmdf2 %>% filter(grepl("C16a", its2_type_profile), Abundance > 0)
-# 
-# pmdf2 %>% filter(host_species == "furcata", clade == "C", Abundance > 0)
-# pmdf2 %>% filter(grepl("C47", its2_type_profile), Abundance > 0)
-# pmdf2 %>% filter(grepl("C42", its2_type_profile), Abundance > 0)
-# pmdf2 %>% filter(grepl("C45a", its2_type_profile), Abundance > 0)
-# 
-# 
-# pmdf2 %>% filter(host_species == "natans", clade == "B", Abundance > 0)
-# pmdf2 %>% filter(grepl("B5af", its2_type_profile), Abundance > 0)
-# pmdf2 %>% filter(host_species == "strigosa", clade == "B", Abundance > 0)
-# pmdf2 %>% filter(grepl("B1x", its2_type_profile), Abundance > 0)
-# 
-# pmdf2 %>% filter(host_species == "franksi", clade == "B", Abundance > 0.05)
-# pmdf2 %>% filter(host_species == "siderea", clade == "B", Abundance > 0.05)
-# pmdf2 %>% filter(its2_type_profile == "B1-B1x-B1t-B14b-B1af-B1ae-B1ag", Abundance > 0.05)
-# pmdf2 %>% filter(its2_type_profile == "B19/B5af-B19e-B19c-B5ag-B19d-B19f-B40a-B19h", Abundance > 0.05)
-# pmdf2 %>% filter(its2_type_profile == "B1-B1z-B1aa-B1ad-B1ac-B1ab", Abundance > 0.05)
+# Display Figure 2
+clade_nmds
 ```
 
-# PERMANOVAs to compare symbionts within a genus across host species
+### Test for differences between host species using pairwise PERMANOVAs
 ```{r}
+# Pairwise PERMANOVAs
 devtools::install_github("pmartinezarbizu/pairwiseAdonis/pairwiseAdonis")
 
-# Pairwise PERMANOVAs to test if the Breviolum sequence variants differ among host species
-
-# Symbiodinium
+# Test whether Symbiodinium sequence assemblages differ among host species hosting them at >5%
 Amod <- pairwiseAdonis::pairwise.adonis(distance(varA, "bray"), 
                                         as_tibble(sample_data(varA))$host_species,
                                         p.adjust.m = "bonferroni")
-Amod
-
-Amod <- Amod %>%
-  separate(col = pairs, into = c("var1", "var2"), sep = " vs ")
-
-Amod %>%
-  bind_rows(Amod %>% rename(var1 = var2, var2 = var1)) %>%
-  full_join(expand_grid(var1 = unique(as_tibble(sample_data(varA))$host_species), 
-                        var2 = unique(as_tibble(sample_data(varA))$host_species))) %>%
-  mutate(p.sig = case_when(p.adjusted < 0.05 ~ p.adjusted, TRUE ~ NA_real_)) %>%
-  ggplot(aes(x = var1, y = var2)) +
-  geom_tile(col = "black", aes(fill = log10(p.adjusted))) +
-  geom_text(aes(label = sig), fontface = "bold", size = 5) +
-  scale_fill_gradient(low = "red", high = "white")
+knitr::kable(Amod)
+# No significant differences for Symbiodinium (low sample sizes)
 
 
-# Breviolum
+
+# Test whether Breviolum sequence assemblages differ among host species hosting them at >5%
 Bmod <- pairwiseAdonis::pairwise.adonis(distance(varB, "bray"), 
                                         as_tibble(sample_data(varB))$host_species,
                                         p.adjust.m = "fdr")
-Bmod
+knitr::kable(Bmod)
 
+# Visualize pairwise test significance as heatmap
 Bmod <- Bmod %>%
   separate(col = pairs, into = c("var1", "var2"), sep = " vs ")
-
 Bmod %>%
   bind_rows(Bmod %>% rename(var1 = var2, var2 = var1)) %>%
   full_join(expand_grid(var1 = unique(as_tibble(sample_data(varB))$host_species), 
@@ -552,16 +486,17 @@ Bmod %>%
   geom_text(aes(label = sig), fontface = "bold", size = 5) +
   scale_fill_gradient(low = "red", high = "white")
 
-# Cladocopium
-as_tibble(sample_data(varC)) %>% count(host_species)
+
+
+# Test whether Cladocopium sequence assemblages differ among host species hosting them at >5%
 Cmod <- pairwiseAdonis::pairwise.adonis(distance(varC, "bray"), 
                                         as_tibble(sample_data(varC))$host_species,
                                         p.adjust.m = "fdr")
-Cmod
+knitr::kable(Cmod)
 
+# Visualize pairwise test significance as heatmap
 Cmod <- Cmod %>%
   separate(col = pairs, into = c("var1", "var2"), sep = " vs ")
-
 Cmod %>%
   bind_rows(Cmod %>% rename(var1 = var2, var2 = var1)) %>%
   full_join(expand_grid(var1 = unique(as_tibble(sample_data(varC))$host_species), 
@@ -573,18 +508,19 @@ Cmod %>%
   scale_fill_gradient(low = "red", high = "white")
 
 
-# Durusdinium
-as_tibble(sample_data(varD)) %>% count(host_species)
+# Test whether Durusdinium sequence assemblages differ among host species hosting them at >5%
 Dmod <- pairwiseAdonis::pairwise.adonis(distance(varD, "bray"), 
                                         as_tibble(sample_data(varD))$host_species,
                                         p.adjust.m = "fdr")
-Dmod
+knitr::kable(Dmod)
+# No significant differences for Durusdinium (low sample sizes)
 ```
 
-# Corals that changed dominant symbiont genera or profiles, or number of genera
+# Analyze symbiont community change over time within colonies
 
-```{r, dom_bk_etc}
-# Changes in dominant genus
+### Find number of corals that changed dominant genus or profile
+```{r, change_dominant}
+# Find corals that changed dominant genus
 genus_change <- pmdf %>%
   filter(Abundance >= 0.5) %>%
   group_by(gspp, host_id) %>%
@@ -594,24 +530,27 @@ pmdf %>%
   filter(Abundance >= 0.5, host_id %in% genus_change$host_id) %>%
   select(host_id, host_species, year, clade, its2_type_profile)
 
-# Changes in dominant profile within a genus
+# Find corals that changed dominant profile within a genus
 prof_change <- pmdf %>%
   filter(Abundance >= 0.5) %>%
   group_by(gspp, clade, host_id) %>%
   summarize(n_dom_profs = n_distinct(host_id, clade, its2_type_profile)) %>%
-  filter(n_dom_profs > 1)
-prof_change %>% distinct(gspp)
+  filter(n_dom_profs > 1) %>%
+  ungroup()
+n_distinct(prof_change$host_id)
 # 13 colonies changed dominant profile within genus
-# how many total colonies sampled more than one year?
+
+# How many total colonies were sampled in more than one year?
 pmdf %>%
   distinct(host_id, year) %>%
   count(host_id) %>%
   count(n > 1)
 # 56 colonies sampled more than once, 4 shuffled genera, and 13 shuffled profiles, so 39 did not
+```
 
-####### new organization of all of this
-
-# get abundance of each clade in each sample
+### Find number of corals that hosted multiple symbiont genera
+```{r mult_genera}
+# Get abundance of each clade in each sample
 clades <- vmdf %>%
   # Get clade level relative abundances
   group_by(gspp, host_site, host_id, year, clade) %>%
@@ -620,35 +559,47 @@ clades <- vmdf %>%
   pivot_wider(names_from = clade, values_from = Abundance) %>%
   ungroup()
 
-# get number of clades over threshold abundance in each sample
+# Get number of clades over threshold abundance in each sample
 nclades <- clades %>%
   nest(data = c(A, B, C, D)) %>%
   mutate(nclades.0.1 = map_dbl(data, ~ sum(. > 0.001)),
          nclades.1   = map_dbl(data, ~ sum(. > 0.01)),
          nclades.10  = map_dbl(data, ~ sum(. > 0.1)))
 
-# how many colonies ever had multiple clades (all time points)?
+# Find coral colonies that had multiple clades/genera (any time point)
 mult <- nclades %>%
   group_by(gspp, host_site, host_id) %>%
   summarize(mult.0.1 = any(nclades.0.1 > 1),
             mult.1   = any(nclades.1 > 1),
             mult.10  = any(nclades.10 > 1))
-table(mult$mult.0.1) # 64/70 (91%) colonies had multiple clades > 0.1% abund
-table(mult$mult.1) # 33/70 (47%) colonies had multiple clades > 1% abund
-table(mult$mult.10) # 11/70 (16%) colonies had multiple clades > 10% abund
+
+table(mult$mult.0.1) 
+# 64/70 (91%) colonies had multiple clades > 0.1% abund
+
+table(mult$mult.1) 
+# 33/70 (47%) colonies had multiple clades > 1% abund
+
+table(mult$mult.10) 
+# 11/70 (16%) colonies had multiple clades > 10% abund
 
 
+# Find coral colonies that changed in the number of clades > 1%
+nc1 <- nclades %>%
+  group_by(host_id) %>%
+  filter(n() > 1) %>%
+  summarize(nc1 = n_distinct(nclades.1))
+
+table(nc1$nc1) 
+# 27/56 corals sampled more than once showed a change in the number of clades >1% relative abundance
 ```
 
-# How dynamic are coral symbiont communities within individual colonies? (change over time)
-
-```{r}
-
+### Visualize symbiont community change over time using NMDS
+```{r change_nmds_Figure3, fig.width = 6, fig.height = 6}
 ### Visualize change within colonies over time
 varr <- transform_sample_counts(variants, function(x) sqrt(x/sum(x))) 
 #set.seed(55)
 set.seed(56)
-varr.nmds <- ordinate(varr, "NMDS", "bray")
+varr.nmds <- ordinate(varr, "NMDS", "bray", trace = FALSE)
 varr.nmds.s <- plot_ordination(varr, varr.nmds, type="samples")
 
 nmds_fig <- as_tibble(varr.nmds.s$data) %>%
@@ -664,13 +615,16 @@ nmds_fig <- as_tibble(varr.nmds.s$data) %>%
           strip.text = element_text(face = "italic"),
           text = element_text(size = 7), legend.text = element_text(size = 4),
           axis.text.x = element_text(hjust = 0)) +
-  theme(legend.position = "none"); nmds_fig
+  theme(legend.position = "none")
 
+# Save Figure 3
 ggsave(nmds_fig, filename = "Output/Figure3.png", width = 85, height = 85, units = "mm")
 
+# Display Figure 3
+nmds_fig
 ```
 
-
+### Analyze the change in *Breviolum* in *M. cavernosa*
 ```{r}
 # Mcav Breviolum change over time
 vmdf %>%
@@ -678,13 +632,12 @@ vmdf %>%
   group_by(host_id, year) %>%
   summarize(totB = sum(Abundance)) %>%
   group_by(year) %>%
-  summarize(meanB = mean(totB))
+  summarize(`mean % Breviolum` = mean(totB)) %>%
+  knitr::kable()
 ```
 
-
 # Compare between-colony and within-colony Bray-Curtis dissimilarities across species
-
-```{r}
+```{r between_within}
 varr <- transform_sample_counts(variants, function(x) sqrt(x/sum(x)))    # Square-root transform
 
 bd <- as.matrix(distance(varr, "bray"))
@@ -707,6 +660,7 @@ brayord <- bd2 %>%
   arrange(-medbray) %>%
   mutate(gspp = as_factor(species1))
   
+# Make raincloud plot
 source("https://raw.githubusercontent.com/datavizpyr/data/master/half_flat_violinplot.R")
 f4 <- bd2 %>% mutate(gspp = factor(species1, levels = levels(brayord$gspp))) %>%
   ggplot(aes(x = group, y = dist)) +
@@ -722,11 +676,15 @@ f4 <- bd2 %>% mutate(gspp = factor(species1, levels = levels(brayord$gspp))) %>%
           text = element_text(size = 7), legend.text = element_text(size = 4),
           axis.text.x = element_text(hjust = 0)) +
     labs(y = "Bray-Curtis Dissimilarity", x = "") +
-    coord_cartesian(xlim = c(1.3, 2.1)); f4
+    coord_cartesian(xlim = c(1.3, 2.1))
 
+# Save Figure 4
 ggsave(f4, filename = "Output/Figure4.png", width = 102, height = 70, units = "mm")
 
+# Display Figure 4
+f4
 
+# Compare magnitude of between- to within-colony variation
 bd2 %>%
   group_by(species1, group) %>%
   summarize(median_dist = median(dist)) %>%
