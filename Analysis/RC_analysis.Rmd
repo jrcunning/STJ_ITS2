@@ -473,10 +473,13 @@ Bmod <- pairwiseAdonis::pairwise.adonis(distance(varB, "bray"),
                                         p.adjust.m = "fdr")
 knitr::kable(Bmod)
 
+# Save statistical results as Table S1
+write_excel_csv(Bmod, path = "output/TableS1.csv")
+
 # Visualize pairwise test significance as heatmap
 Bmod <- Bmod %>%
   separate(col = pairs, into = c("var1", "var2"), sep = " vs ")
-Bmod %>%
+figS1 <- Bmod %>%
   bind_rows(Bmod %>% rename(var1 = var2, var2 = var1)) %>%
   full_join(expand_grid(var1 = unique(as_tibble(sample_data(varB))$host_species), 
                         var2 = unique(as_tibble(sample_data(varB))$host_species))) %>%
@@ -484,7 +487,12 @@ Bmod %>%
   ggplot(aes(x = var1, y = var2)) +
   geom_tile(col = "black", aes(fill = log10(p.adjusted))) +
   geom_text(aes(label = sig), fontface = "bold", size = 5) +
-  scale_fill_gradient(low = "red", high = "white")
+  labs(x = "", y = "") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  scale_fill_gradient(low = "red", high = "white"); figS1
+
+# Save heatmap as Figure S1
+ggsave(figS1, filename = "output/FigureS1.png", device = "png", width = 60, height = 60, units = "mm")
 
 
 
@@ -494,10 +502,13 @@ Cmod <- pairwiseAdonis::pairwise.adonis(distance(varC, "bray"),
                                         p.adjust.m = "fdr")
 knitr::kable(Cmod)
 
+# Save statistical results as Table S2
+write_excel_csv(Cmod, path = "output/TableS2.csv")
+
 # Visualize pairwise test significance as heatmap
 Cmod <- Cmod %>%
   separate(col = pairs, into = c("var1", "var2"), sep = " vs ")
-Cmod %>%
+figS2 <- Cmod %>%
   bind_rows(Cmod %>% rename(var1 = var2, var2 = var1)) %>%
   full_join(expand_grid(var1 = unique(as_tibble(sample_data(varC))$host_species), 
                         var2 = unique(as_tibble(sample_data(varC))$host_species))) %>%
@@ -505,7 +516,12 @@ Cmod %>%
   ggplot(aes(x = var1, y = var2)) +
   geom_tile(col = "black", aes(fill = log10(p.adjusted))) +
   geom_text(aes(label = sig), fontface = "bold", size = 5) +
-  scale_fill_gradient(low = "red", high = "white")
+  labs(x = "", y = "") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_gradient(low = "red", high = "white"); figS2
+
+# Save heatmap as Figure S1
+ggsave(figS2, filename = "output/FigureS2.png", device = "png", width = 60, height = 60, units = "mm")
 
 
 # Test whether Durusdinium sequence assemblages differ among host species hosting them at >5%
