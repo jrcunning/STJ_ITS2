@@ -364,7 +364,7 @@ ggnet
 fig1a <- fig1a + theme(plot.margin = unit(c(5, 0, 0, 0), "mm"))
 fig1b <- plot_grid(g2leg, ggnet, labels = c("", "b)"), label_x = -0.15) + 
   theme(plot.background = element_rect(fill = "white", color = NA))
-fig1 <- plot_grid(fig1a, fig1b, nrow = 2, rel_heights = c(0.4, 0.6), labels = c("a)", ""), label_y = 0.9) + 
+fig1 <- plot_grid(fig1a, fig1b, nrow = 2, rel_heights = c(0.4, 0.6), labels = c("a)", ""), label_y = 0.9, label_x = -0.007) + 
   theme(plot.margin = unit(c(0, 0, -27, 0), "mm"))
 
 ggsave(fig1, filename = "Output/Figure1.png", width = 183, height = 120, units = "mm")
@@ -435,7 +435,10 @@ clade_nmds <- bind_rows(
   facet_wrap(~ sym_genus, scales = "free", nrow = 1) +
   geom_point(alpha = 1, size = 2) +
   geom_path(aes(group = host_id), linewidth = 0.2) +
-  scale_shape_manual(values = 8:0) +
+  scale_shape_manual(values = 8:0, labels = c("O. annularis", "M. cavernosa", "O. faveolata", "O. franksi", "P. furcata",
+                                              "D. labyrinthiformis", "C. natans", "S. siderea", "P. strigosa")) +
+  scale_color_discrete(labels = c("O. annularis", "M. cavernosa", "O. faveolata", "O. franksi", "P. furcata",
+                                              "D. labyrinthiformis", "C. natans", "S. siderea", "P. strigosa")) +
   theme_custom() +
   theme(legend.position = "bottom",
         strip.background = element_blank(),
@@ -443,7 +446,7 @@ clade_nmds <- bind_rows(
         legend.key.size = unit(2, "mm"), legend.title = element_blank(),
           legend.margin = margin(1, 0, 0, 0), legend.box.margin = margin(-10, -10, 0, -10),
           legend.key = element_rect(fill = NA),
-          text = element_text(size = 6), legend.text = element_text(size = 4)) +
+          text = element_text(size = 6), legend.text = element_text(size = 4, face = "italic")) +
   guides(shape = guide_legend(ncol = 9))
 
 # Save Figure 2
