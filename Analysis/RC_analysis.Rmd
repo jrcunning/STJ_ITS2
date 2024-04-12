@@ -369,7 +369,7 @@ fig1b <- plot_grid(g2leg, ggnet, labels = c("", "b)"), label_x = -0.15) +
 fig1 <- plot_grid(fig1a, fig1b, nrow = 2, rel_heights = c(0.4, 0.6), labels = c("a)", ""), label_y = 0.9, label_x = -0.007) + 
   theme(plot.margin = unit(c(0, 0, -27, 0), "mm"))
 
-ggsave(fig1, filename = "Output/Figure1.png", width = 183, height = 120, units = "mm")
+ggsave(fig1, filename = "Output/Figure1.png", width = 183, height = 120, units = "mm", dpi = 600)
 ```
 
 # Analyze coral host-specificity of sequence variants within each symbiont genus
