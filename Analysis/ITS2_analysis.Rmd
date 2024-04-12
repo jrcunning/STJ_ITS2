@@ -124,14 +124,12 @@ otu <- otu_table(otu1, taxa_are_rows = FALSE)
 variants <- phyloseq(otu, tax, sam)
 ```
 
-```{r its2_filter_save}
+```{r its2_filter}
 # Filter out RANDOM samples (non-tagged colonies)
 variants <- subset_samples(variants, host_id != "RANDOM")
 variants <- prune_taxa(taxa_sums(variants) != 0, variants)
 profiles <- subset_samples(profiles, host_id != "RANDOM")
 profiles <- prune_taxa(taxa_sums(profiles) != 0, profiles)
-
-save(profiles, variants, file = "data/Symb_phyloseq.RData")
 ```
 
 # Coral sampling summary
