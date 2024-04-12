@@ -498,8 +498,8 @@ figS1 <- Bmod %>%
         legend.title = element_text(size = 4)) +
   scale_fill_gradient(low = "red", high = "white"); figS1
 
-# Save heatmap as Figure S1
-ggsave(figS1, filename = "output/FigureS1.png", device = "png", width = 50, height = 30, units = "mm")
+# Save heatmap as Figure S2
+ggsave(figS1, filename = "output/FigureS2.png", device = "png", width = 50, height = 30, units = "mm")
 
 
 
@@ -531,8 +531,8 @@ figS2 <- Cmod %>%
         legend.title = element_text(size = 4)) +
   scale_fill_gradient(low = "red", high = "white"); figS2
 
-# Save heatmap as Figure S1
-ggsave(figS2, filename = "output/FigureS2.png", device = "png", width = 60, height = 40, units = "mm")
+# Save heatmap as Figure S3
+ggsave(figS2, filename = "output/FigureS3.png", device = "png", width = 60, height = 40, units = "mm")
 
 
 # Test whether Durusdinium sequence assemblages differ among host species hosting them at >5%
